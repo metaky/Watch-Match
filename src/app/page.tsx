@@ -151,14 +151,6 @@ export default function Home() {
         resultCount={content.length}
       />
 
-      {/* Filter Overlay */}
-      <FilterOverlay
-        isOpen={isFilterOverlayOpen}
-        onClose={handleCloseFilterOverlay}
-        onApply={handleApplyFilters}
-        resultCount={content.length}
-      />
-
       {/* Content Detail Modal */}
       <ContentDetailModal
         content={selectedContent}

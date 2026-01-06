@@ -222,7 +222,7 @@ export function useContentWithDetails(
 
     useEffect(() => {
         fetchContent(false);
-    }, [filter, advancedFilters, partnerInteractions]);
+    }, [fetchContent, filter, advancedFilters, partnerInteractions]);
 
     return {
         content,

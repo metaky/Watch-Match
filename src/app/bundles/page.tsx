@@ -29,6 +29,10 @@ export default function BundlesPage() {
                     for (const idStr of itemIds) {
                         try {
                             const id = parseInt(idStr);
+                            if (isNaN(id)) {
+                                console.warn('Skipping invalid ID for poster:', idStr);
+                                continue;
+                            }
                             // Optimistically try movie first
                             try {
                                 const details = await getMovieDetails(id);
@@ -38,10 +42,14 @@ export default function BundlesPage() {
                                 }
                             } catch {
                                 // Try TV if movie fails
-                                const details = await getTVDetails(id);
-                                if (details.posterPath) {
-                                    const url = getImageUrl(details.posterPath, 'medium');
-                                    if (url) posterPaths.push(url);
+                                try {
+                                    const details = await getTVDetails(id);
+                                    if (details.posterPath) {
+                                        const url = getImageUrl(details.posterPath, 'medium');
+                                        if (url) posterPaths.push(url);
+                                    }
+                                } catch (e) {
+                                    console.error('Failed to fetch TV details for', id, e);
                                 }
                             }
                         } catch (e) {

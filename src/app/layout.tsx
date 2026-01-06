@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { ProfileGate } from "@/components/ProfileGate";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,11 +32,13 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <div className="app-container">
-          <Header />
-          <main className="px-4 py-4">
-            {children}
-          </main>
-          <BottomNav />
+          <ProfileGate>
+            <Header />
+            <main className="px-4 py-4">
+              {children}
+            </main>
+            <BottomNav />
+          </ProfileGate>
         </div>
       </body>
     </html>

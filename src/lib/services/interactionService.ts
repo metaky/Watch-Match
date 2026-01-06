@@ -57,8 +57,7 @@ export async function getUserInteractions(
 ): Promise<UserInteractionWithId[]> {
     const q = query(
         collection(db, COLLECTION),
-        where('userId', '==', userId),
-        orderBy('updatedAt', 'desc')
+        where('userId', '==', userId)
     );
 
     const querySnapshot = await getDocs(q);
@@ -78,8 +77,7 @@ export async function getUserInteractionsByStatus(
     const q = query(
         collection(db, COLLECTION),
         where('userId', '==', userId),
-        where('status', '==', status),
-        orderBy('updatedAt', 'desc')
+        where('status', '==', status)
     );
 
     const querySnapshot = await getDocs(q);
