@@ -5,3 +5,4 @@ export { GenreChips } from './GenreChips';
 export { PartnerRatingCards } from './PartnerRatingCards';
 export { RangeSlider } from './RangeSlider';
 export { ReleaseYearFilter } from './ReleaseYearFilter';
+export { SortSelect } from './SortSelect';

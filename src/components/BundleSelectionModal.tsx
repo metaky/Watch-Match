@@ -18,13 +18,21 @@ export function BundleSelectionModal({
     onClose,
     contentToAdd,
 }: BundleSelectionModalProps) {
-    const { bundles, addBundle, addItemToBundle, user1Name } = useAppStore();
+    const { bundles, addBundle, addItemToBundle, addToWatchlist, user1Name } = useAppStore();
     const [isCreating, setIsCreating] = useState(false);
     const [newBundleTitle, setNewBundleTitle] = useState('');
 
     if (!isOpen || !contentToAdd) return null;
 
-    const orderedBundles = [...bundles].sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    // Helper to safely get milliseconds from Timestamp or serialized object
+    const getMillis = (timestamp: any) => {
+        if (!timestamp) return 0;
+        if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+        if (timestamp.seconds) return timestamp.seconds * 1000;
+        return 0;
+    };
+
+    const orderedBundles = [...bundles].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
 
     const handleCreateBundle = (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,6 +42,14 @@ export function BundleSelectionModal({
             title: newBundleTitle,
             createdBy: 'user-1', // Mock user ID for now
             contentIds: [contentToAdd.id.toString()],
+        });
+
+        // Also add to watchlist
+        addToWatchlist({
+            id: contentToAdd.id,
+            mediaType: contentToAdd.mediaType,
+            title: contentToAdd.title,
+            posterPath: contentToAdd.posterUrl ? contentToAdd.posterUrl.split('/').pop() || null : null,
         });
 
         setNewBundleTitle('');
@@ -46,19 +62,15 @@ export function BundleSelectionModal({
         // Since we only want to ADD from this view (usually), we check if it's there
         if (!bundle.contentIds.includes(contentId)) {
             addItemToBundle(bundle.id, contentId);
-        } else {
-            // Optional: Allow removing? Requirement says "Add to bundle", implies selection. 
-            // Let's allow toggling off for better UX if they made a mistake.
-            // But we need removeItemFromBundle action which we added.
-            // Let's assume re-clicking adds it if not present, and maybe does nothing or removes if present?
-            // Standard "Add to Playlist" behavior usually toggles.
-            // We need `removeItemFromBundle` from store.
-            // Let's get it from store.
+
+            // Also add to watchlist
+            addToWatchlist({
+                id: contentToAdd.id,
+                mediaType: contentToAdd.mediaType,
+                title: contentToAdd.title,
+                posterPath: contentToAdd.posterUrl ? contentToAdd.posterUrl.split('/').pop() || null : null,
+            });
         }
-        // For simple "Add to" flow, often clicking just adds and shows a toast.
-        // But let's support multi-select style or single click?
-        // Let's do simple: Click -> Add -> Show 'Added' state
-        addItemToBundle(bundle.id, contentId);
     };
 
     // We need to access removeItemFromBundle from store if we want toggle behavior

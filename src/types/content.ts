@@ -161,6 +161,9 @@ export interface AdvancedFilters {
     /** Selected genres */
     genres: string[];
 
+    /** Sort order */
+    sortBy: SortOption;
+
     /** Partner rating filter - 'any' means no filter applied */
     partnerRating: PartnerStatus | 'any';
 
@@ -184,6 +187,7 @@ export const DEFAULT_FILTERS: AdvancedFilters = {
     contentType: null,
     streamingServices: [],
     genres: [],
+    sortBy: 'popular',
     partnerRating: 'any',
     minImdbRating: 0,
     maxRuntime: 240,
@@ -208,6 +212,11 @@ export function hasActiveFilters(filters: AdvancedFilters): boolean {
 }
 
 /**
+ * Sort options for search/browse
+ */
+export type SortOption = 'relevance' | 'latest' | 'highest_score' | 'popular';
+
+/**
  * Search filter state (subset of AdvancedFilters for search page)
  * Excludes partner rating since it's not relevant for discovering new content
  */
@@ -217,6 +226,9 @@ export interface SearchFilters {
 
     /** Selected genres */
     genres: string[];
+
+    /** Sort order */
+    sortBy: SortOption;
 
     /** Minimum IMDb rating (0-10 scale) */
     minImdbRating: number;
@@ -237,6 +249,7 @@ export interface SearchFilters {
 export const DEFAULT_SEARCH_FILTERS: SearchFilters = {
     contentType: null,
     genres: [],
+    sortBy: 'popular',
     minImdbRating: 0,
     maxRuntime: 240,
     releaseDecades: [],

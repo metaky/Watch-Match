@@ -172,9 +172,8 @@ export default function SearchPage() {
             <FilterOverlay
                 isOpen={isFilterOverlayOpen}
                 onClose={() => setFilterOverlayOpen(false)}
-                // We use the same overlay but it might need adaptation if we wanted 
-                // to sync searchFilters vs advancedFilters. For now let's use searchFilters direct.
                 onApply={() => setFilterOverlayOpen(false)}
+                mode="search"
             />
 
             {/* Content Detail Modal */}

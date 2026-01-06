@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { searchMulti, getTrending, getMovieDetails, getTVDetails, getWatchProviders } from '@/services/tmdb';
+import { searchMulti, getTrending, getMovieDetails, getTVDetails, getWatchProviders, discoverMedia } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import type { ContentCardData, SearchFilters } from '@/types/content';
 import { extractYear, formatRuntime } from '@/types/content';
@@ -211,35 +211,59 @@ export function useSearch(
         return transformedResults.filter((item): item is ContentCardData => item !== null);
     }, [initialItemsCount]);
 
-    // Fetch trending content for browse mode
-    const fetchTrending = useCallback(async () => {
+    // Fetch content for browse mode (trending or discovered/sorted)
+    const fetchBrowsingContent = useCallback(async () => {
         setIsLoading(true);
         setError(null);
 
         try {
-            const trending = await getTrending(
-                filters.contentType === 'movies' ? 'movie' :
-                    filters.contentType === 'tv' ? 'tv' : 'all'
-            );
+            // Determine media type
+            const mediaType = filters.contentType === 'movies' ? 'movie' :
+                filters.contentType === 'tv' ? 'tv' : 'all';
 
-            const transformed = await transformResults(trending.results);
+            let fetchedResults;
+
+            // If "all" and sorting is not 'popular', we default to 'popular' behavior or 'movie' discovery?
+            // User requirement: "Popular Now" uses getTrending.
+            // Other sorts ("Latest Added", "Highest Score") use discoverMedia.
+            // discoverMedia only supports 'movie' or 'tv', not 'all'.
+            // Strategy: 
+            // 1. If 'popular' (default), use getTrending (supports 'all').
+            // 2. If 'relevance', treat as 'popular' for browsing.
+            // 3. If 'latest' or 'highest_score':
+            //    - If mediaType is 'movie' or 'tv', use discoverMedia.
+            //    - If mediaType is 'all', we default to getTrending because discover doesn't support 'all' easily without merging.
+
+            const sortBy = filters.sortBy || 'popular';
+
+            if (sortBy === 'popular' || sortBy === 'relevance' || mediaType === 'all') {
+                fetchedResults = await getTrending(mediaType);
+            } else {
+                // Specific sort for specific media type
+                const tmdbSort = sortBy === 'highest_score' ? 'vote_average.desc' :
+                    sortBy === 'latest' ? 'primary_release_date.desc' : 'popularity.desc';
+
+                fetchedResults = await discoverMedia(mediaType as 'movie' | 'tv', tmdbSort);
+            }
+
+            const transformed = await transformResults(fetchedResults.results);
             const filtered = applyFilters(transformed);
             setResults(filtered);
             setSuggestions(filtered.slice(0, 5)); // For checking
-            setHasMore(false); // Trending is a single page
+            setHasMore(false); // Trending/Discover usually single page fetch here for now (or improve pagination later)
         } catch (err) {
-            setError(err instanceof Error ? err : new Error('Failed to fetch trending'));
+            setError(err instanceof Error ? err : new Error('Failed to fetch content'));
             setResults([]);
             setSuggestions([]);
         } finally {
             setIsLoading(false);
         }
-    }, [filters.contentType, transformResults, applyFilters]);
+    }, [filters.contentType, filters.sortBy, transformResults, applyFilters]);
 
     // Perform search
     const performSearch = useCallback(async (searchQuery: string, pageNum = 1) => {
         if (!searchQuery.trim()) {
-            fetchTrending();
+            fetchBrowsingContent();
             return;
         }
 
@@ -261,7 +285,22 @@ export function useSearch(
             }
 
             const transformed = await transformResults(searchResults);
-            const filtered = applyFilters(transformed);
+            let filtered = applyFilters(transformed);
+
+            // Client-side sorting for search results (since API doesn't support sort_by with query)
+            if (filters.sortBy === 'highest_score') {
+                filtered.sort((a, b) => {
+                    const ratingA = parseFloat(a.imdbRating || '0');
+                    const ratingB = parseFloat(b.imdbRating || '0');
+                    return ratingB - ratingA;
+                });
+            } else if (filters.sortBy === 'latest') {
+                filtered.sort((a, b) => {
+                    const yearA = parseInt(a.year || '0');
+                    const yearB = parseInt(b.year || '0');
+                    return yearB - yearA;
+                });
+            }
 
             if (pageNum === 1) {
                 setResults(filtered);
@@ -280,7 +319,7 @@ export function useSearch(
         } finally {
             setIsLoading(false);
         }
-    }, [transformResults, applyFilters, fetchTrending]);
+    }, [transformResults, applyFilters, fetchBrowsingContent, filters.sortBy]);
 
     // Debounced search effect
     useEffect(() => {
@@ -304,7 +343,7 @@ export function useSearch(
         if (query.trim()) {
             performSearch(query, 1);
         } else {
-            fetchTrending();
+            fetchBrowsingContent();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filters]);

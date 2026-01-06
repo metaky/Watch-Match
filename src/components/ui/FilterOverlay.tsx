@@ -12,6 +12,7 @@ import {
     PartnerRatingCards,
     RangeSlider,
     ReleaseYearFilter,
+    SortSelect,
 } from './filters';
 import type { AdvancedFilters, StreamingServiceId } from '@/types/content';
 import { DEFAULT_FILTERS, hasActiveFilters } from '@/types/content';
@@ -158,6 +159,17 @@ export function FilterOverlay({
             {/* Scrollable Content */}
             <main className="flex-1 overflow-y-auto pb-32">
                 <div className="flex flex-col gap-8 px-5 py-6">
+                    {/* Sort Order */}
+                    <section>
+                        <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">
+                            Sort By
+                        </h2>
+                        <SortSelect
+                            value={filters.sortBy}
+                            onChange={(value) => updateFilter('sortBy', value)}
+                        />
+                    </section>
+
                     {/* Content Type */}
                     <section>
                         <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">

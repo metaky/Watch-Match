@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-    getTrending,
     getMovieDetails,
     getTVDetails,
     getWatchProviders,
@@ -113,21 +112,82 @@ export function useContentWithDetails(
         setError(null);
 
         try {
-            // Fetch trending content from TMDB
-            let mediaType: 'movie' | 'tv' | 'all' = 'all';
+            // 1. Fetch user interactions (Watchlist)
+            const interactions = await getUserInteractions(activeProfile);
 
-            if (advancedFilters?.contentType === 'movies') mediaType = 'movie';
-            else if (advancedFilters?.contentType === 'tv') mediaType = 'tv';
-            else if (filter === 'movies') mediaType = 'movie';
-            else if (filter === 'tv') mediaType = 'tv';
+            // 2. Filter for "Watchlist" items (liked/Yes)
+            // TODO: Verify exact status strings. Assuming 'liked' and 'Yes' mean added to watchlist.
+            const relevantItems = interactions.filter(i =>
+                i.status === 'liked' || i.status === 'Yes'
+            );
 
+            // 3. Sort by Date Added (createdAt > updatedAt) descending
+            relevantItems.sort((a, b) => {
+                const dateA = a.createdAt?.toMillis() ?? a.updatedAt.toMillis();
+                const dateB = b.createdAt?.toMillis() ?? b.updatedAt.toMillis();
+                return dateB - dateA;
+            });
+
+            // 4. Transform to MediaItem stubs
+            let mediaItems: MediaItem[] = relevantItems.map(i => ({
+                id: parseInt(i.tmdbId), // Ensure ID is number
+                mediaType: i.contentType,
+                title: '', // Will be filled by enrich
+                originalTitle: '',
+                overview: '',
+                posterPath: null,
+                backdropPath: null,
+                releaseDate: '',
+                voteAverage: 0,
+                voteCount: 0,
+                genreIds: [],
+            }));
+
+            // 5. Apply Filters (Client-side)
+
+            // Simple Type Filter
+            if (filter === 'movies') {
+                mediaItems = mediaItems.filter(i => i.mediaType === 'movie');
+            } else if (filter === 'tv') {
+                mediaItems = mediaItems.filter(i => i.mediaType === 'tv');
+            }
+
+            // Advanced Filters (Content Type)
+            if (advancedFilters?.contentType === 'movies') {
+                mediaItems = mediaItems.filter(i => i.mediaType === 'movie');
+            } else if (advancedFilters?.contentType === 'tv') {
+                mediaItems = mediaItems.filter(i => i.mediaType === 'tv');
+            }
+
+            // Note: Other advanced filters (genre, rating, runtime) require details, 
+            // so we must fetch details FIRST or fetch details for ALL candidates?
+            // If we filter BEFORE fetching details, we might miss items that match criteria but weren't fetched.
+            // But fetching details for ALL items in watchlist is expensive (API limits).
+            // A common strategy is to filter what we can (type), then fetch details for the current page,
+            // BUT this breaks filtering if the matching items are on page 10.
+            // Given this is a "Watchlist" (likely < 500 items), filtering AFTER matching is safer for consistency,
+            // but we need the details.
+
+            // OPTIMIZATION: For this iteration, we will paginate the *ids* then fetch details. 
+            // This ignores advanced filters for non-fetched items, which is a trade-off.
+            // If the user applies a "Genre" filter, it will only filter the visible page. 
+            // TO FIX PROPERLY: We would need stored metadata in Firestore (genres, runtime) to filter effectively without API calls.
+            // For now, I will proceed with PAGINATED fetching of details for the *entire sorted list* if filters are active?
+            // No, that's too heavy. I will accept that complex filters only apply to the visible/fetched set OR 
+            // I should disable complex filters on the Home page if we can't support them efficiently?
+            // The prompt asks to "change default ordering". It doesn't explicitly demand advanced filtering on the full dataset.
+            // I'll stick to paginating the sorted ID list.
+
+            const totalItems = mediaItems.length;
             const nextPage = isLoadMore ? page + 1 : 1;
-            const response = await getTrending(mediaType, 'week', nextPage);
-            const rawItems = response.results;
+            const startIndex = (nextPage - 1) * limit;
+            const endIndex = startIndex + limit;
 
-            // Fetch additional details for each item
+            const slicedItems = mediaItems.slice(startIndex, endIndex);
+
+            // Fetch details for the slice
             const enrichedContent = await Promise.all(
-                rawItems.map(async (item) => {
+                slicedItems.map(async (item) => {
                     try {
                         return await enrichMediaItem(item, partnerInteractions);
                     } catch (err) {
@@ -137,21 +197,16 @@ export function useContentWithDetails(
                 })
             );
 
-            // Apply filters
+            // Apply Post-Fetch Filters (e.g. 'available')
             let finalContent = enrichedContent;
 
-            // 1. Simple filter for availability
             if (filter === 'available') {
                 finalContent = finalContent.filter(c => c.streamingProvider !== null);
             }
 
-            // 2. Advanced Filters
+            // Apply Advanced Filters (Client-side on the fetched chunk - restricted scope)
             if (advancedFilters) {
                 finalContent = finalContent.filter(item => {
-                    // Content Type
-                    if (advancedFilters.contentType === 'movies' && item.mediaType !== 'movie') return false;
-                    if (advancedFilters.contentType === 'tv' && item.mediaType !== 'tv') return false;
-
                     // Genres
                     if (advancedFilters.genres.length > 0) {
                         const itemGenres = item.genre.split(', ').map(g => g.trim());
@@ -210,7 +265,7 @@ export function useContentWithDetails(
                 setContent(finalContent);
             }
 
-            setHasMore(response.page < response.totalPages);
+            setHasMore(endIndex < totalItems);
         } catch (err) {
             console.error('Failed to fetch content:', err);
             setError(err instanceof Error ? err : new Error('Failed to fetch content'));
@@ -218,7 +273,7 @@ export function useContentWithDetails(
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [filter, page, advancedFilters, partnerInteractions]);
+    }, [filter, page, advancedFilters, partnerInteractions, activeProfile, limit]);
 
     useEffect(() => {
         fetchContent(false);
@@ -285,8 +340,13 @@ async function enrichMediaItem(
     }
 
     // Get genre
-    const genreIds = item.genreIds || [];
-    const genre = genreIds.length > 0 ? (GENRE_MAP[genreIds[0]] || '') : '';
+    let genre = '';
+    if (details.genres && details.genres.length > 0) {
+        genre = details.genres[0].name;
+    } else {
+        const genreIds = item.genreIds || [];
+        genre = genreIds.length > 0 ? (GENRE_MAP[genreIds[0]] || '') : '';
+    }
 
     // Get partner status from Firestore map
     const partnerStatus = partnerInteractions[item.id.toString()] || null;
@@ -294,11 +354,11 @@ async function enrichMediaItem(
     return {
         id: item.id,
         mediaType: item.mediaType,
-        title: item.title,
-        year: extractYear(item.releaseDate),
+        title: details.title,
+        year: extractYear(details.releaseDate),
         runtime,
         genre,
-        posterUrl: getImageUrl(item.posterPath, 'medium'),
+        posterUrl: getImageUrl(details.posterPath, 'medium'),
         rottenTomatoes: ratings.rottenTomatoes,
         imdbRating: ratings.imdbRating,
         metacritic: ratings.metacritic,

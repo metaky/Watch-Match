@@ -118,6 +118,40 @@ export async function getPopularTV(page = 1): Promise<MediaItem[]> {
     return response.data.results.map((item: Record<string, unknown>) => normalizeMediaItem(item, 'tv'));
 }
 
+// Discover media with sorting
+export async function discoverMedia(
+    mediaType: 'movie' | 'tv',
+    sortBy: 'popularity.desc' | 'primary_release_date.desc' | 'vote_average.desc' = 'popularity.desc',
+    page = 1,
+    filters: Record<string, any> = {}
+): Promise<PaginatedResult<MediaItem>> {
+    const params: Record<string, any> = {
+        page,
+        sort_by: sortBy,
+        include_adult: false,
+        'vote_count.gte': 100, // Filter out noise
+        ...filters,
+    };
+
+    // If sorting by latest, ensure we don't show future content (unless desired)
+    // Actually "Latest Added" usually means released. 
+    // TMDB "primary_release_date.desc" includes future. 
+    if (sortBy === 'primary_release_date.desc') {
+        const today = new Date().toISOString().split('T')[0];
+        params['primary_release_date.lte'] = today;
+        params['air_date.lte'] = today;
+    }
+
+    const response = await tmdbApi.get(`/discover/${mediaType}`, { params });
+
+    return {
+        results: response.data.results.map((item: Record<string, unknown>) => normalizeMediaItem(item, mediaType)),
+        page: response.data.page,
+        totalPages: response.data.total_pages,
+        totalResults: response.data.total_results,
+    };
+}
+
 // Get movie details
 export async function getMovieDetails(id: number): Promise<MovieDetails> {
     const response = await tmdbApi.get(`/movie/${id}`);

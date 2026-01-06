@@ -5,6 +5,7 @@ import { AdvancedFilters, DEFAULT_FILTERS, ContentCardData, SearchFilters, DEFAU
 import { MOCK_BUNDLES } from '@/lib/mockBundles';
 import { BundleWithId } from '@/types/firestore';
 import { Timestamp } from 'firebase/firestore';
+import { setInteraction, deleteInteraction } from '@/lib/services/interactionService';
 
 export type UserProfile = 'user1' | 'user2';
 
@@ -131,6 +132,14 @@ export const useAppStore = create<AppState>()(
                 const { activeProfile, user1Watchlist, user2Watchlist } = get();
                 const newItem: WatchlistItem = { ...item, addedAt: new Date() };
 
+                // Persist to Firestore (Fire and forget)
+                setInteraction({
+                    userId: activeProfile,
+                    tmdbId: item.id.toString(),
+                    contentType: item.mediaType,
+                    status: 'liked', // 'liked' implies watchlist
+                }).catch(err => console.error("Failed to persist watchlist item", err));
+
                 if (activeProfile === 'user1') {
                     // Check if already in watchlist
                     if (user1Watchlist.some(i => i.id === item.id && i.mediaType === item.mediaType)) {
@@ -194,6 +203,10 @@ export const useAppStore = create<AppState>()(
 
             removeFromWatchlist: (id, mediaType) => {
                 const { activeProfile } = get();
+
+                // Persist delete to Firestore
+                deleteInteraction(activeProfile, id.toString())
+                    .catch(err => console.error("Failed to remove watchlist item from DB", err));
 
                 if (activeProfile === 'user1') {
                     set((state) => ({

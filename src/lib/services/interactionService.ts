@@ -8,12 +8,10 @@ import {
     query,
     where,
     getDocs,
-    orderBy,
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
-    UserInteraction,
     UserInteractionWithId,
     CreateInteractionInput,
     InteractionStatus,
@@ -96,13 +94,23 @@ export async function setInteraction(
     const docId = getInteractionId(input.userId, input.tmdbId);
     const docRef = doc(db, COLLECTION, docId);
 
-    await setDoc(docRef, {
+    // Check if document exists to preserve createdAt
+    const docSnap = await getDoc(docRef);
+    const exists = docSnap.exists();
+
+    const data: any = {
         userId: input.userId,
         tmdbId: input.tmdbId,
         contentType: input.contentType,
         status: input.status,
         updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (!exists) {
+        data.createdAt = serverTimestamp();
+    }
+
+    await setDoc(docRef, data, { merge: true });
 
     return docId;
 }

@@ -52,6 +52,7 @@ export interface UserInteraction {
     contentType: ContentType;
     status: InteractionStatus;
     updatedAt: Timestamp;
+    createdAt?: Timestamp;
 }
 
 /**
