@@ -1,0 +1,40 @@
+# Environment Variables for The Shared Screen
+
+Copy this template to create your `.env.local` file (already configured with your Firebase project):
+
+```bash
+# Firebase Configuration
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCqCOb3sS1hvraWCsoyWe_Tm9GqvRUAgio
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=watch-match-6ee61.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=watch-match-6ee61
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=watch-match-6ee61.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1028231844786
+NEXT_PUBLIC_FIREBASE_APP_ID=1:1028231844786:web:99bd7cd6c9a1b98456caab
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-KB1W39Z39L
+
+# TMDB API
+NEXT_PUBLIC_TMDB_API_KEY=6cc8d21ba3543b7f5b7b8a65c0e2f0a1
+NEXT_PUBLIC_TMDB_BASE_URL=https://api.themoviedb.org/3
+
+# OMDb API
+NEXT_PUBLIC_OMDB_API_KEY=a7e35212
+NEXT_PUBLIC_OMDB_BASE_URL=https://www.omdbapi.com
+```
+
+## Quick Setup
+
+Run this command in the project root to create `.env.local`:
+
+```bash
+cat > .env.local << 'EOF'
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCqCOb3sS1hvraWCsoyWe_Tm9GqvRUAgio
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=watch-match-6ee61.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=watch-match-6ee61
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=watch-match-6ee61.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1028231844786
+NEXT_PUBLIC_FIREBASE_APP_ID=1:1028231844786:web:99bd7cd6c9a1b98456caab
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-KB1W39Z39L
+NEXT_PUBLIC_TMDB_API_KEY=6cc8d21ba3543b7f5b7b8a65c0e2f0a1
+NEXT_PUBLIC_OMDB_API_KEY=a7e35212
+EOF
+```

@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // Helper Functions
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user owns this document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Validate string field
+    function isValidString(field) {
+      return field is string && field.size() > 0;
+    }
+    
+    // Validate content type
+    function isValidContentType(contentType) {
+      return contentType in ['movie', 'tv'];
+    }
+    
+    // Validate interaction status
+    function isValidStatus(status) {
+      return status in ['liked', 'Yes', 'No', 'watched', 'wont_watch', 'not_important'];
+    }
+    
+    // ============================================
+    // Users Collection
+    // ============================================
+    match /users/{userId} {
+      // Users can only read their own profile
+      allow read: if isOwner(userId);
+      
+      // Users can only create/update their own profile
+      allow create: if isOwner(userId) 
+        && isValidString(request.resource.data.displayName)
+        && isValidString(request.resource.data.email);
+      
+      allow update: if isOwner(userId);
+      
+      // Users can delete their own profile
+      allow delete: if isOwner(userId);
+    }
+    
+    // ============================================
+    // User Interactions Collection
+    // ============================================
+    match /user_interactions/{interactionId} {
+      // Users can only read their own interactions
+      allow read: if isAuthenticated() 
+        && resource.data.userId == request.auth.uid;
+      
+      // Users can create interactions for themselves
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && isValidString(request.resource.data.tmdbId)
+        && isValidContentType(request.resource.data.contentType)
+        && isValidStatus(request.resource.data.status);
+      
+      // Users can update their own interactions
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own interactions
+      allow delete: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // ============================================
+    // Matches Collection
+    // ============================================
+    match /matches/{matchId} {
+      // All authenticated users can read matches
+      allow read: if isAuthenticated();
+      
+      // Matches are managed server-side (Cloud Functions)
+      // Only allow writes from authenticated users in the usersWhoLiked array
+      allow create: if isAuthenticated()
+        && request.auth.uid in request.resource.data.usersWhoLiked
+        && isValidString(request.resource.data.tmdbId)
+        && isValidContentType(request.resource.data.contentType);
+      
+      allow update: if isAuthenticated()
+        && (request.auth.uid in resource.data.usersWhoLiked
+            || request.auth.uid in request.resource.data.usersWhoLiked);
+      
+      // No client-side deletes
+      allow delete: if false;
+    }
+    
+    // ============================================
+    // Bundles Collection
+    // ============================================
+    match /bundles/{bundleId} {
+      // All authenticated users can read bundles
+      allow read: if isAuthenticated();
+      
+      // Only the creator can create bundles
+      allow create: if isAuthenticated()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidString(request.resource.data.title)
+        && request.resource.data.contentIds is list;
+      
+      // Only the creator can update their bundles
+      allow update: if isAuthenticated()
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid;
+      
+      // Only the creator can delete their bundles
+      allow delete: if isAuthenticated()
+        && resource.data.createdBy == request.auth.uid;
+    }
+  }
+}
