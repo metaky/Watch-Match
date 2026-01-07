@@ -53,7 +53,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signIn = async (email: string, password: string) => {
         setAuthError(null);
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const result = await signInWithEmailAndPassword(auth, email, password);
+            // Explicitly set current user to speed up state transition
+            setCurrentUser(result.user);
         } catch (error: unknown) {
             const errorMessage = getAuthErrorMessage(error);
             setAuthError(errorMessage);
@@ -64,7 +66,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signUp = async (email: string, password: string) => {
         setAuthError(null);
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
+            const result = await createUserWithEmailAndPassword(auth, email, password);
+            // Explicitly set current user to speed up state transition
+            setCurrentUser(result.user);
         } catch (error: unknown) {
             const errorMessage = getAuthErrorMessage(error);
             setAuthError(errorMessage);

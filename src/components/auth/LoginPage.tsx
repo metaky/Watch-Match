@@ -47,10 +47,13 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             } else {
                 await signIn(email, password);
             }
+            // If sign in/up succeeds, onSuccess might not be needed because
+            // AuthGate will detect the user change, but calling it for safety
             onSuccess?.();
+            // Don't set isSubmitting(false) here if we're expecting a transition
+            // to prevent the button from flashing back to "Sign In"
         } catch {
             // Error is handled by AuthContext
-        } finally {
             setIsSubmitting(false);
         }
     };

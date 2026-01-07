@@ -48,17 +48,8 @@ export function getDbInstance(): Firestore {
   return dbInstance;
 }
 
-// For backwards compatibility - these will throw if called during SSR/build
-export const auth = new Proxy({} as Auth, {
-  get(target, prop) {
-    return Reflect.get(getAuthInstance(), prop);
-  }
-});
-
-export const db = new Proxy({} as Firestore, {
-  get(target, prop) {
-    return Reflect.get(getDbInstance(), prop);
-  }
-});
+// For backwards compatibility and easier usage across the app
+export const auth = typeof window !== 'undefined' ? getAuth(getFirebaseApp()) : {} as Auth;
+export const db = typeof window !== 'undefined' ? getFirestore(getFirebaseApp()) : {} as Firestore;
 
 export default { getFirebaseApp, getAuthInstance, getDbInstance };
