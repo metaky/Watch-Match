@@ -219,7 +219,7 @@ export function hasActiveFilters(filters: AdvancedFilters): boolean {
 /**
  * Sort options for search/browse
  */
-export type SortOption = 'relevance' | 'latest' | 'highest_score' | 'popular';
+export type SortOption = 'latest' | 'highest_score' | 'popular';
 
 /**
  * Search filter state (subset of AdvancedFilters for search page)

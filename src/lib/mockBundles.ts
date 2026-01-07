@@ -35,7 +35,7 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-1',
         title: 'Friday Night Romcoms',
         createdBy: 'user-1',
-        contentIds: ['27205', '313369', '508442', '453395', '284054'],
+        contentIds: ['346698', '508442', '453395', '284054', '339403'], // Barbie, Marry Me, Set It Up, Black Panther, Baby Driver
         createdAt: createPastTimestamp(2, 'hours'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/qAZ0pzat24kLdO3o8ejmbLxyOac.jpg', // Crazy Rich Asians
@@ -47,7 +47,8 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-2',
         title: 'Marvel Marathon',
         createdBy: 'user-1',
-        contentIds: Array.from({ length: 24 }, (_, i) => `marvel-${i}`),
+        // Real Marvel movie IDs from TMDB
+        contentIds: ['299536', '299534', '1726', '299537', '10138', '68721', '118340', '284053', '271110'],
         createdAt: createPastTimestamp(1, 'days'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/or06FN3Dka5tukK1e9sl16pB3iy.jpg', // Avengers: Endgame
@@ -59,7 +60,7 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-3',
         title: 'Showtime Series',
         createdBy: 'user-1',
-        contentIds: ['1396', '1399'],
+        contentIds: ['1396', '1399'], // Breaking Bad, Game of Thrones (TV)
         createdAt: createPastTimestamp(3, 'days'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', // Breaking Bad
@@ -69,7 +70,8 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-4',
         title: 'Indie Gems',
         createdBy: 'user-1',
-        contentIds: Array.from({ length: 10 }, (_, i) => `indie-${i}`),
+        // Real indie movie IDs: Juno, Moonlight, Lady Bird, Little Miss Sunshine, The Florida Project
+        contentIds: ['7326', '376867', '391713', '773', '399174'],
         createdAt: createPastTimestamp(1, 'weeks'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/pThyQovXQrw2m0s9x82twj48Jq4.jpg', // Juno
@@ -81,7 +83,8 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-5',
         title: 'Sci-Fi Classics',
         createdBy: 'user-1',
-        contentIds: Array.from({ length: 8 }, (_, i) => `scifi-${i}`),
+        // Real sci-fi movie IDs: Interstellar, Matrix, Inception, Blade Runner 2049, Arrival, Ex Machina
+        contentIds: ['157336', '603', '27205', '335984', '329865', '264660'],
         createdAt: createPastTimestamp(2, 'weeks'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg', // Interstellar
@@ -93,7 +96,8 @@ export const MOCK_BUNDLES: BundleDisplayData[] = [
         id: 'bundle-6',
         title: '80s Horror',
         createdBy: 'user-1',
-        contentIds: Array.from({ length: 13 }, (_, i) => `horror-${i}`),
+        // Real 80s horror movie IDs: The Shining, A Nightmare on Elm Street, The Thing, Friday the 13th, Halloween
+        contentIds: ['694', '377', '1091', '755', '948'],
         createdAt: createPastTimestamp(1, 'months'),
         posterPaths: [
             'https://image.tmdb.org/t/p/w342/4c8nEiIMGLnAqLfBKl4QoNZ9tBM.jpg', // The Shining

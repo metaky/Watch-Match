@@ -203,14 +203,13 @@ export function useSearch(
             // discoverMedia only supports 'movie' or 'tv', not 'all'.
             // Strategy: 
             // 1. If 'popular' (default), use getTrending (supports 'all').
-            // 2. If 'relevance', treat as 'popular' for browsing.
-            // 3. If 'latest' or 'highest_score':
+            // 2. If 'latest' or 'highest_score':
             //    - If mediaType is 'movie' or 'tv', use discoverMedia.
             //    - If mediaType is 'all', we default to getTrending because discover doesn't support 'all' easily without merging.
 
             const sortBy = filters.sortBy || 'popular';
 
-            if (sortBy === 'popular' || sortBy === 'relevance' || mediaType === 'all') {
+            if (sortBy === 'popular' || mediaType === 'all') {
                 fetchedResults = await getTrending(mediaType);
             } else {
                 // Specific sort for specific media type

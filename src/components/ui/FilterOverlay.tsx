@@ -157,7 +157,7 @@ export function FilterOverlay({
             </header>
 
             {/* Scrollable Content */}
-            <main className="flex-1 overflow-y-auto pb-32">
+            <main className="flex-1 overflow-y-auto pb-40">
                 <div className="flex flex-col gap-8 px-5 py-6">
                     {/* Sort Order */}
                     <section>
@@ -271,9 +271,10 @@ export function FilterOverlay({
             {/* Fixed Footer */}
             <div
                 className={cn(
-                    'fixed bottom-0 left-0 w-full p-4',
-                    'bg-bg-dark/90 backdrop-blur-xl',
-                    'border-t border-border-default z-40 pb-8'
+                    'fixed bottom-0 left-0 right-0 p-4',
+                    'bg-bg-dark/95 backdrop-blur-xl',
+                    'border-t border-border-default z-40',
+                    'pb-[max(1rem,env(safe-area-inset-bottom))]'
                 )}
             >
                 <button

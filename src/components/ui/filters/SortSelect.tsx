@@ -16,12 +16,11 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
     { value: 'popular', label: 'Popular Now' },
     { value: 'latest', label: 'Latest Added' },
     { value: 'highest_score', label: 'Highest Score' },
-    { value: 'relevance', label: 'Relevance' },
 ];
 
 export function SortSelect({ value, onChange, className }: SortSelectProps) {
     return (
-        <div className={cn('grid grid-cols-2 gap-3', className)}>
+        <div className={cn('grid grid-cols-3 gap-3', className)}>
             {SORT_OPTIONS.map((option) => (
                 <button
                     key={option.value}

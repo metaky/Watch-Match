@@ -2,10 +2,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AdvancedFilters, DEFAULT_FILTERS, ContentCardData, SearchFilters, DEFAULT_SEARCH_FILTERS } from '@/types/content';
-import { MOCK_BUNDLES } from '@/lib/mockBundles';
 import { BundleWithId } from '@/types/firestore';
 import { Timestamp } from 'firebase/firestore';
 import { setInteraction, deleteInteraction } from '@/lib/services/interactionService';
+import { createBundle as createBundleInFirestore, deleteBundle as deleteBundleInFirestore } from '@/lib/services/bundleService';
 
 export type UserProfile = 'user1' | 'user2';
 
@@ -94,6 +94,12 @@ interface AppState {
     contentToAddToBundle: ContentCardData | null;
     openBundleModal: (content: ContentCardData) => void;
     closeBundleModal: () => void;
+
+    // Hydration state (Firestore sync)
+    isHydrated: boolean;
+    setHydrated: (hydrated: boolean) => void;
+    hydrateWatchlist: (items: WatchlistItem[]) => void;
+    hydrateBundles: (bundles: BundleWithId[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -113,11 +119,14 @@ export const useAppStore = create<AppState>()(
             searchFilters: DEFAULT_SEARCH_FILTERS,
             selectedContent: null,
             isDetailModalOpen: false,
-            bundles: MOCK_BUNDLES, // Start with mock bundles for development
+            bundles: [], // Will be hydrated from Firestore
 
             // Bundle modal initial state
             isBundleModalOpen: false,
             contentToAddToBundle: null,
+
+            // Hydration initial state
+            isHydrated: false,
 
             // Profile actions
             setActiveProfile: (profile) => set({ activeProfile: profile, isFilterOverlayOpen: false }), // Close filters on switch just in case
@@ -203,18 +212,42 @@ export const useAppStore = create<AppState>()(
             resetSearchFilters: () => set({ searchFilters: DEFAULT_SEARCH_FILTERS }),
 
             // Bundle actions
-            addBundle: (bundle) => set((state) => {
+            addBundle: (bundle) => {
+                const { activeProfile } = get();
                 const newBundle: BundleWithId = {
                     ...bundle,
-                    id: `bundle-${Date.now()}`, // Temporary ID generation
+                    id: `bundle-${Date.now()}`, // Temporary ID, will be replaced by Firestore
                     createdAt: Timestamp.now(),
                 } as BundleWithId;
-                return { bundles: [...state.bundles, newBundle] };
-            }),
 
-            removeBundle: (id) => set((state) => ({
-                bundles: state.bundles.filter(b => b.id !== id)
-            })),
+                // Optimistically update local state
+                set((state) => ({ bundles: [...state.bundles, newBundle] }));
+
+                // Persist to Firestore
+                createBundleInFirestore({
+                    title: bundle.title,
+                    createdBy: activeProfile,
+                    contentIds: bundle.contentIds,
+                }).then((firestoreId) => {
+                    // Update the bundle with the real Firestore ID
+                    set((state) => ({
+                        bundles: state.bundles.map(b =>
+                            b.id === newBundle.id ? { ...b, id: firestoreId } : b
+                        )
+                    }));
+                }).catch(err => console.error('Failed to persist bundle to Firestore', err));
+            },
+
+            removeBundle: (id) => {
+                // Optimistically update local state
+                set((state) => ({
+                    bundles: state.bundles.filter(b => b.id !== id)
+                }));
+
+                // Persist to Firestore
+                deleteBundleInFirestore(id)
+                    .catch(err => console.error('Failed to delete bundle from Firestore', err));
+            },
 
             addItemToBundle: (bundleId, itemId) => set((state) => ({
                 bundles: state.bundles.map(b => {
@@ -246,6 +279,11 @@ export const useAppStore = create<AppState>()(
             setBundleModalOpen: (open) => set({ isBundleModalOpen: open }),
             openBundleModal: (content) => set({ contentToAddToBundle: content, isBundleModalOpen: true }),
             closeBundleModal: () => set({ contentToAddToBundle: null, isBundleModalOpen: false }),
+
+            // Hydration actions
+            setHydrated: (hydrated) => set({ isHydrated: hydrated }),
+            hydrateWatchlist: (items) => set({ watchlist: items }),
+            hydrateBundles: (bundles) => set({ bundles }),
         }),
         {
             name: 'watch-match-storage',

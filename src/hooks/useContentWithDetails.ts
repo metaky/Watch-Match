@@ -13,7 +13,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { getUserInteractions } from '@/lib/services/interactionService';
 import { AdvancedFilters } from '@/types/content';
 import { cachedFetch, CacheKeys } from '@/lib/cache';
-import type { UserInteractionWithId } from '@/types/firestore';
+
 
 // Genre ID to name mapping (TMDB)
 const GENRE_MAP: Record<number, string> = {
@@ -67,7 +67,7 @@ export function useContentWithDetails(
     options: UseContentWithDetailsOptions = {}
 ): UseContentWithDetailsResult {
     const { filter = 'all', advancedFilters, limit = 10 } = options;
-    const { activeProfile } = useAppStore();
+    const { activeProfile, watchlist } = useAppStore();
 
     const [content, setContent] = useState<ContentCardData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -109,61 +109,54 @@ export function useContentWithDetails(
         setError(null);
 
         try {
-            // 1. Fetch user interactions (Watchlist)
-            const interactions = await getUserInteractions(activeProfile);
+            // 1. Use the SHARED watchlist from Zustand store (not per-user Firestore interactions)
+            // The watchlist is shared between both users - that's the intended architecture
+            const sharedWatchlistItems = [...watchlist];
 
-            // 2. Filter for "Watchlist" items (liked/Yes)
-            // TODO: Verify exact status strings. Assuming 'liked' and 'Yes' mean added to watchlist.
-            const relevantItems = interactions.filter(i =>
-                i.status === 'liked' || i.status === 'Yes'
-            );
-
-            // 3. Sort based on filter
+            // 2. Sort based on filter
             const sortBy = advancedFilters?.sortBy || 'latest';
 
-            relevantItems.sort((a, b) => {
+            sharedWatchlistItems.sort((a, b) => {
                 if (sortBy === 'highest_score') {
                     // Sort by vote average (desc)
-                    const scoreA = a.meta?.voteAverage || 0;
-                    const scoreB = b.meta?.voteAverage || 0;
+                    const scoreA = a.voteAverage || 0;
+                    const scoreB = b.voteAverage || 0;
                     if (scoreA !== scoreB) return scoreB - scoreA;
                 } else if (sortBy === 'popular') {
                     // Sort by popularity (desc)
-                    const popA = a.meta?.popularity || 0;
-                    const popB = b.meta?.popularity || 0;
+                    const popA = a.popularity || 0;
+                    const popB = b.popularity || 0;
                     if (popA !== popB) return popB - popA;
                 }
 
-                // Default / Fallback: Sort by Date Added (createdAt > updatedAt) descending
-                const dateA = a.createdAt?.toMillis() ?? a.updatedAt.toMillis();
-                const dateB = b.createdAt?.toMillis() ?? b.updatedAt.toMillis();
+                // Default / Fallback: Sort by Date Added descending
+                // Handle addedAt being either a Date object or string (from localStorage hydration)
+                const getTimestamp = (date: Date | string | undefined): number => {
+                    if (!date) return 0;
+                    if (date instanceof Date) return date.getTime();
+                    // It's a string (ISO format from localStorage)
+                    return new Date(date).getTime();
+                };
+                const dateA = getTimestamp(a.addedAt);
+                const dateB = getTimestamp(b.addedAt);
                 return dateB - dateA;
             });
 
-            // 4. Transform to MediaItem stubs (using persisted meta if available)
-            // Also keep a map of stored metadata for passing to enrichMediaItem
-            const storedMetaMap = new Map<number, UserInteractionWithId['meta']>();
-
-            let mediaItems: MediaItem[] = relevantItems.map(i => {
-                const id = parseInt(i.tmdbId);
-                if (i.meta) {
-                    storedMetaMap.set(id, i.meta);
-                }
-                return {
-                    id,
-                    mediaType: i.contentType,
-                    title: i.meta?.title || '',
-                    originalTitle: '',
-                    overview: '',
-                    posterPath: i.meta?.posterPath || null,
-                    backdropPath: null,
-                    releaseDate: i.meta?.releaseDate || '',
-                    voteAverage: i.meta?.voteAverage || 0,
-                    voteCount: 0,
-                    popularity: i.meta?.popularity || 0,
-                    genreIds: [],
-                };
-            });
+            // 3. Transform to MediaItem stubs
+            let mediaItems: MediaItem[] = sharedWatchlistItems.map(item => ({
+                id: item.id,
+                mediaType: item.mediaType,
+                title: item.title || '',
+                originalTitle: '',
+                overview: '',
+                posterPath: item.posterPath || null,
+                backdropPath: null,
+                releaseDate: item.releaseDate || '',
+                voteAverage: item.voteAverage || 0,
+                voteCount: 0,
+                popularity: item.popularity || 0,
+                genreIds: [],
+            }));
 
             // 5. Apply Filters (Client-side)
 
@@ -207,12 +200,11 @@ export function useContentWithDetails(
 
             const slicedItems = mediaItems.slice(startIndex, endIndex);
 
-            // Fetch details for the slice (uses stored meta when available to avoid API calls)
+            // Fetch details for the slice
             const enrichedContent = await Promise.all(
                 slicedItems.map(async (item) => {
                     try {
-                        const storedMeta = storedMetaMap.get(item.id);
-                        return await enrichMediaItem(item, partnerInteractions, storedMeta);
+                        return await enrichMediaItem(item, partnerInteractions);
                     } catch (err) {
                         console.error(`Failed to enrich item ${item.id}:`, err);
                         return createBasicCardData(item, partnerInteractions);
@@ -281,6 +273,22 @@ export function useContentWithDetails(
                 });
             }
 
+            // Sort AFTER enrichment (since voteAverage is now available from API)
+            if (sortBy === 'highest_score') {
+                finalContent.sort((a, b) => {
+                    const scoreA = a.voteAverage || 0;
+                    const scoreB = b.voteAverage || 0;
+                    return scoreB - scoreA;
+                });
+            } else if (sortBy === 'popular') {
+                finalContent.sort((a, b) => {
+                    const popA = a.popularity || 0;
+                    const popB = b.popularity || 0;
+                    return popB - popA;
+                });
+            }
+            // Note: 'latest' sort is handled pre-enrichment using addedAt (line 119-143)
+
             if (isLoadMore) {
                 setContent(prev => [...prev, ...finalContent]);
                 setPage(nextPage);
@@ -319,14 +327,8 @@ export function useContentWithDetails(
  */
 async function enrichMediaItem(
     item: MediaItem,
-    partnerInteractions: Record<string, PartnerStatus>,
-    storedMeta?: UserInteractionWithId['meta']
+    partnerInteractions: Record<string, PartnerStatus>
 ): Promise<ContentCardData> {
-    // If we have cached metadata in Firestore, use it to avoid API calls
-    if (storedMeta?.runtime !== undefined && storedMeta?.genres?.length) {
-        return createCardFromStoredMeta(item, storedMeta, partnerInteractions);
-    }
-
     // Single API call with all data via append_to_response (replaces 4 separate calls)
     const details = await getContentDetailsEnriched(item.id, item.mediaType);
 
@@ -398,35 +400,6 @@ async function enrichMediaItem(
     };
 }
 
-/**
- * Create card data from stored Firestore metadata (no API calls needed)
- */
-function createCardFromStoredMeta(
-    item: MediaItem,
-    meta: NonNullable<UserInteractionWithId['meta']>,
-    partnerInteractions: Record<string, PartnerStatus>
-): ContentCardData {
-    const genre = meta.genres?.length ? meta.genres[0] : '';
-    const runtime = meta.runtime ? formatRuntime(meta.runtime) : '';
-
-    return {
-        id: item.id,
-        mediaType: item.mediaType,
-        title: meta.title,
-        year: extractYear(meta.releaseDate || ''),
-        runtime,
-        genre,
-        posterUrl: getImageUrl(meta.posterPath, 'medium'),
-        rottenTomatoes: meta.rottenTomatoes || null,
-        imdbRating: meta.imdbRating || item.voteAverage?.toFixed(1) || null,
-        metacritic: null,
-        streamingProvider: null, // Would need to store this too for full optimization
-        partnerStatus: partnerInteractions[item.id.toString()] || null,
-        voteAverage: meta.voteAverage,
-        popularity: meta.popularity,
-        releaseDate: meta.releaseDate || '',
-    };
-}
 
 /**
  * Create basic card data without enrichment (fallback)
