@@ -30,6 +30,8 @@ export type StreamingService =
 // Collection Types
 // ============================================
 
+export type ProfileType = 'user1' | 'user2';
+
 /**
  * User profile stored in the `users` collection.
  * Document ID: Firebase Auth UID
@@ -40,6 +42,8 @@ export interface User {
     photoURL: string;
     streamingServices: StreamingService[];
     lastActive: Timestamp;
+    /** The profile (user1 = Kyle, user2 = Melanie) this user has claimed */
+    profile?: ProfileType;
 }
 
 /**

@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAppStore, UserProfile } from '@/store/useAppStore';
+import { useAuth } from '@/contexts/AuthContext';
+import { setUserProfile } from '@/lib/services/userService';
 
 export function UserSelection() {
     const { selectProfile, hasSelectedProfile, user1Name, user2Name } = useAppStore();
+    const { currentUser } = useAuth();
     const [isVisible, setIsVisible] = useState(false);
     const [isExiting, setIsExiting] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         // Delay showing to avoid flash if already selected (though gate will handle this, this is double safety)
@@ -15,12 +19,25 @@ export function UserSelection() {
         }
     }, [hasSelectedProfile]);
 
-    const handleSelect = (profile: UserProfile) => {
+    const handleSelect = async (profile: UserProfile) => {
+        if (!currentUser || isSubmitting) return;
+
+        setIsSubmitting(true);
         setIsExiting(true);
-        setTimeout(() => {
-            selectProfile(profile);
-            setIsVisible(false);
-        }, 600); // Wait for exit animation
+
+        try {
+            // Persist profile claim to Firestore
+            await setUserProfile(currentUser.uid, profile, currentUser.email || '');
+
+            setTimeout(() => {
+                selectProfile(profile);
+                setIsVisible(false);
+            }, 600); // Wait for exit animation
+        } catch (error) {
+            console.error('Error claiming profile:', error);
+            setIsExiting(false);
+            setIsSubmitting(false);
+        }
     };
 
     if (!isVisible && hasSelectedProfile) return null;

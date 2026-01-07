@@ -116,3 +116,36 @@ export async function deleteUser(uid: string): Promise<void> {
     const docRef = doc(db, COLLECTION, uid);
     await deleteDoc(docRef);
 }
+
+/**
+ * Get the profile (user1/user2) claimed by a user
+ */
+export async function getUserProfile(uid: string): Promise<'user1' | 'user2' | null> {
+    const user = await getUser(uid);
+    return user?.profile || null;
+}
+
+/**
+ * Set the profile (user1/user2) for a user
+ * This links a Firebase Auth UID to a specific profile
+ */
+export async function setUserProfile(
+    uid: string,
+    profile: 'user1' | 'user2',
+    email: string
+): Promise<void> {
+    const docRef = doc(db, COLLECTION, uid);
+
+    await setDoc(
+        docRef,
+        {
+            profile,
+            email,
+            displayName: profile === 'user1' ? 'Kyle' : 'Melanie',
+            photoURL: '',
+            streamingServices: [],
+            lastActive: serverTimestamp(),
+        },
+        { merge: true }
+    );
+}
