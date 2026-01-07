@@ -5,7 +5,7 @@ import { AdvancedFilters, DEFAULT_FILTERS, ContentCardData, SearchFilters, DEFAU
 import { BundleWithId } from '@/types/firestore';
 import { Timestamp } from 'firebase/firestore';
 import { setInteraction, deleteInteraction } from '@/lib/services/interactionService';
-import { createBundle as createBundleInFirestore, deleteBundle as deleteBundleInFirestore } from '@/lib/services/bundleService';
+import { createBundle as createBundleInFirestore, deleteBundle as deleteBundleInFirestore, addContentToBundle, removeContentFromBundle } from '@/lib/services/bundleService';
 
 export type UserProfile = 'user1' | 'user2';
 
@@ -77,7 +77,7 @@ interface AppState {
     bundles: BundleWithId[];
     addBundle: (bundle: Omit<BundleWithId, 'id' | 'createdAt'>) => void;
     removeBundle: (id: string) => void;
-    addItemToBundle: (bundleId: string, itemId: string) => void;
+    addItemToBundle: (bundleId: string, itemId: string, mediaType: 'movie' | 'tv', metadata?: { title?: string; posterPath?: string }) => void;
     removeItemFromBundle: (bundleId: string, itemId: string) => void;
 
     // Content detail modal state
@@ -249,25 +249,39 @@ export const useAppStore = create<AppState>()(
                     .catch(err => console.error('Failed to delete bundle from Firestore', err));
             },
 
-            addItemToBundle: (bundleId, itemId) => set((state) => ({
-                bundles: state.bundles.map(b => {
-                    if (b.id === bundleId) {
-                        // Avoid duplicates
-                        if (b.contentIds.includes(itemId)) return b;
-                        return { ...b, contentIds: [...b.contentIds, itemId] };
-                    }
-                    return b;
-                })
-            })),
+            addItemToBundle: (bundleId, itemId, mediaType, metadata) => {
+                // Optimistically update local state
+                set((state) => ({
+                    bundles: state.bundles.map(b => {
+                        if (b.id === bundleId) {
+                            // Avoid duplicates
+                            if (b.contentIds.includes(itemId)) return b;
+                            return { ...b, contentIds: [...b.contentIds, itemId] };
+                        }
+                        return b;
+                    })
+                }));
 
-            removeItemFromBundle: (bundleId, itemId) => set((state) => ({
-                bundles: state.bundles.map(b => {
-                    if (b.id === bundleId) {
-                        return { ...b, contentIds: b.contentIds.filter(id => id !== itemId) };
-                    }
-                    return b;
-                })
-            })),
+                // Persist to Firestore
+                addContentToBundle(bundleId, itemId, mediaType, metadata)
+                    .catch(err => console.error('Failed to add content to bundle in Firestore', err));
+            },
+
+            removeItemFromBundle: (bundleId, itemId) => {
+                // Optimistically update local state
+                set((state) => ({
+                    bundles: state.bundles.map(b => {
+                        if (b.id === bundleId) {
+                            return { ...b, contentIds: b.contentIds.filter(id => id !== itemId) };
+                        }
+                        return b;
+                    })
+                }));
+
+                // Persist to Firestore
+                removeContentFromBundle(bundleId, itemId)
+                    .catch(err => console.error('Failed to remove content from bundle in Firestore', err));
+            },
 
             // Content detail modal actions
             setSelectedContent: (content) => set({ selectedContent: content }),

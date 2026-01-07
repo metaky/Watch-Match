@@ -12,7 +12,8 @@ import { useAppStore } from '@/store/useAppStore';
 import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import { ContentDetailData, PartnerStatus, getPartnerStatus } from '@/types/content';
-import { getUserInteractions } from '@/lib/services/interactionService';
+import { getUserInteractions, setInteraction } from '@/lib/services/interactionService';
+import { InteractionStatus } from '@/types/firestore';
 
 // Bundle-specific rating for swipe actions
 type BundleRating = 'yes' | 'not_now' | 'never';
@@ -135,17 +136,32 @@ export default function BundleDetailPage() {
     const handleAction = useCallback((rating: BundleRating) => {
         if (!currentContent) return;
 
-        // Record rating
+        // Record rating locally
         setRatings((prev) => ({
             ...prev,
             [currentContent.id]: rating,
         }));
 
+        // Map bundle ratings to Firestore InteractionStatus
+        const statusMap: Record<BundleRating, InteractionStatus> = {
+            'yes': 'liked',           // Map 'yes' to 'liked' for consistency with matches detection
+            'not_now': 'not_important',
+            'never': 'wont_watch'
+        };
+
+        // Persist to Firestore
+        setInteraction({
+            userId: activeProfile,
+            tmdbId: currentContent.id.toString(),
+            contentType: currentContent.mediaType,
+            status: statusMap[rating],
+        }).catch(err => console.error('Failed to save bundle rating:', err));
+
         // Move to next card
         setCurrentIndex((prev) => prev + 1);
 
         console.log(`Rated ${currentContent.title}: ${rating}`);
-    }, [currentContent]);
+    }, [currentContent, activeProfile]);
 
     // Handle back navigation
     const handleBack = () => {
@@ -286,10 +302,10 @@ export default function BundleDetailPage() {
             </div>
 
             {/* Main Content */}
-            <main className="flex-1 relative w-full max-w-md mx-auto px-4 pb-20 flex flex-col justify-center items-center overflow-hidden">
+            <main className="flex-1 relative w-full max-w-md mx-auto px-4 flex flex-col overflow-hidden">
                 {isComplete ? (
                     // Completion State
-                    <div className="text-center px-8">
+                    <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
                         <div className="text-6xl mb-4">🎉</div>
                         <h3 className="text-2xl font-bold text-text-primary mb-2">
                             All Done!
@@ -311,27 +327,31 @@ export default function BundleDetailPage() {
                     </div>
                 ) : (
                     <>
-                        {/* Stacked Card Effect */}
-                        <div className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[82%] h-[58%] bg-gray-800/40 rounded-2xl -rotate-6 z-0 border border-white/5" />
-                        <div className="absolute top-[47%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[88%] h-[60%] bg-gray-800/60 rounded-2xl -rotate-3 z-10 border border-white/5 shadow-xl" />
+                        {/* Card Container with stacked effect */}
+                        <div className="relative flex-1 flex items-center justify-center min-h-0">
+                            {/* Stacked Card Effect */}
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[82%] h-[90%] bg-gray-800/40 rounded-2xl -rotate-6 z-0 border border-white/5" />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[88%] h-[92%] bg-gray-800/60 rounded-2xl -rotate-3 z-10 border border-white/5 shadow-xl" />
 
-                        {/* Current Card */}
-                        {currentContent && (
-                            <SwipeableContentCard
-                                content={currentContent}
-                                onSwipe={handleAction}
-                                className="z-20"
+                            {/* Current Card */}
+                            {currentContent && (
+                                <SwipeableContentCard
+                                    content={currentContent}
+                                    onSwipe={handleAction}
+                                    className="z-20"
+                                />
+                            )}
+                        </div>
+
+                        {/* Action Buttons - Fixed at bottom, in normal flow */}
+                        <div className="shrink-0 py-3 z-30">
+                            <BundleActionButtons
+                                onAction={handleAction}
                             />
-                        )}
-
-                        {/* Action Buttons */}
-                        <BundleActionButtons
-                            onAction={handleAction}
-                            className="absolute bottom-24 left-0 right-0 z-30"
-                        />
+                        </div>
 
                         {/* View Matches Button */}
-                        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-40">
+                        <div className="shrink-0 pb-4 flex justify-center z-40">
                             <ViewMatchesButton
                                 matchCount={matchCount}
                                 onClick={handleViewMatches}

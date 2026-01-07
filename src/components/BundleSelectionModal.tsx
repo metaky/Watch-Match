@@ -61,7 +61,10 @@ export function BundleSelectionModal({
         const contentId = contentToAdd.id.toString();
         // Since we only want to ADD from this view (usually), we check if it's there
         if (!bundle.contentIds.includes(contentId)) {
-            addItemToBundle(bundle.id, contentId);
+            addItemToBundle(bundle.id, contentId, contentToAdd.mediaType, {
+                title: contentToAdd.title,
+                posterPath: contentToAdd.posterUrl ? contentToAdd.posterUrl.split('/').pop() || undefined : undefined,
+            });
 
             // Also add to watchlist
             addToWatchlist({
