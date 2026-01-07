@@ -1,4 +1,4 @@
-// Content Detail Modal - Slide up modal showing detailed content info
+// Content Detail Modal - Slide up modal showing detailed content info (OPTIMIZED)
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -10,7 +10,7 @@ import { WhereToWatch } from './WhereToWatch';
 import { CastRow } from './CastRow';
 import { useAppStore } from '@/store/useAppStore';
 import { getImageUrl } from '@/services/api';
-import { getMovieDetails, getTVDetails, getTrailer, getWatchProviders, getCast } from '@/services/tmdb';
+import { getContentDetailsEnriched, getTrailerFromVideos } from '@/services/tmdbCached';
 import { mapProviderToServiceId } from './StreamingBadge';
 import type { ContentCardData, ContentDetailData, PartnerStatus, StreamingProviderInfo, CastMember } from '@/types/content';
 import type { InteractionStatus } from '@/types/firestore';
@@ -31,11 +31,10 @@ export function ContentDetailModal({ content, isOpen, onClose }: ContentDetailMo
     const [isWatched, setIsWatched] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [isBundleModalOpen, setIsBundleModalOpen] = useState(false);
-    const { activeProfile, removeFromWatchlist, addToWatchlist, user1Watchlist, user2Watchlist } = useAppStore();
+    const { activeProfile, removeFromWatchlist, addToWatchlist, watchlist } = useAppStore();
 
-    // Check if content is in current watchlist
-    const watchlist = activeProfile === 'user1' ? user1Watchlist : user2Watchlist;
-    const isInWatchlist = content ? watchlist.some(i => i.id === content.id && i.mediaType === content.mediaType) : false;
+    // Check if content is in shared watchlist
+    const isInWatchlist = content ? watchlist.some((i: { id: number; mediaType: string }) => i.id === content.id && i.mediaType === content.mediaType) : false;
 
     // Handle remove from watchlist (Trash)
     const handleRemove = async () => {
@@ -120,7 +119,7 @@ export function ContentDetailModal({ content, isOpen, onClose }: ContentDetailMo
         }
     };
 
-    // Fetch full details when content changes
+    // Fetch full details when content changes (OPTIMIZED: uses cached service with append_to_response)
     useEffect(() => {
         if (!content || !isOpen) {
             setDetailData(null);
@@ -130,19 +129,11 @@ export function ContentDetailModal({ content, isOpen, onClose }: ContentDetailMo
         const fetchDetails = async () => {
             setIsLoading(true);
             try {
-                // Fetch details based on media type
-                const details = content.mediaType === 'movie'
-                    ? await getMovieDetails(content.id)
-                    : await getTVDetails(content.id);
+                // Single cached API call with all data via append_to_response (replaces 4+ calls)
+                const details = await getContentDetailsEnriched(content.id, content.mediaType);
 
-                // Fetch trailer
-                const trailer = await getTrailer(content.id, content.mediaType);
-
-                // Fetch watch providers
-                const providers = await getWatchProviders(content.id, content.mediaType);
-
-                // Fetch cast
-                const castData = await getCast(content.id, content.mediaType, 8);
+                // Get trailer from cached videos
+                const trailer = getTrailerFromVideos(details.videos);
 
                 // Map providers to our format
                 const mapProviders = (providerList: { providerId: number; providerName: string; logoPath: string }[]): StreamingProviderInfo[] => {
@@ -154,20 +145,19 @@ export function ContentDetailModal({ content, isOpen, onClose }: ContentDetailMo
                 };
 
                 // Map cast to our format
-                const cast: CastMember[] = castData.map(c => ({
+                const cast: CastMember[] = details.cast.map(c => ({
                     id: c.id,
                     name: c.name,
                     character: c.character,
                     profilePath: c.profilePath,
                 }));
 
-                // Get runtime for movies, or first episode runtime for TV
+                // Get runtime
                 const runtime = content.mediaType === 'movie'
-                    ? (details as { runtime?: number }).runtime
-                    : ((details as { episodeRunTime?: number[] }).episodeRunTime?.[0] || 0);
+                    ? (details as any).runtime
+                    : ((details as any).episodeRunTime?.[0] || 0);
 
-                // Format runtime
-                const formatRuntime = (mins: number) => {
+                const formatRuntimeFn = (mins: number) => {
                     if (!mins) return content.runtime;
                     const hours = Math.floor(mins / 60);
                     const minutes = mins % 60;
@@ -181,14 +171,14 @@ export function ContentDetailModal({ content, isOpen, onClose }: ContentDetailMo
                     overview: details.overview || '',
                     backdropUrl: getImageUrl(details.backdropPath, 'large', 'backdrop'),
                     trailerKey: trailer?.key || null,
-                    mpaaRating: null, // Would need additional API call
-                    runtime: formatRuntime(runtime || 0),
-                    watchProviders: providers ? {
-                        flatrate: mapProviders(providers.flatrate || []),
-                        rent: mapProviders(providers.rent || []),
-                        buy: mapProviders(providers.buy || []),
+                    mpaaRating: null,
+                    runtime: formatRuntimeFn(runtime || 0),
+                    watchProviders: details.watchProviders ? {
+                        flatrate: mapProviders(details.watchProviders.flatrate || []),
+                        rent: mapProviders(details.watchProviders.rent || []),
+                        buy: mapProviders(details.watchProviders.buy || []),
                     } : null,
-                    userRating: null, // Should fetch MY rating here if needed, but not in ContentCardData
+                    userRating: null,
                     cast,
                 };
 

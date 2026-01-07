@@ -1,14 +1,9 @@
-// Hook for fetching content with full details (TMDB + OMDb ratings + streaming)
+// Hook for fetching content with full details (OPTIMIZED - uses cached TMDB service)
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-    getMovieDetails,
-    getTVDetails,
-    getWatchProviders,
-    getExternalIds,
-    type MediaItem
-} from '@/services/tmdb';
+import { type MediaItem } from '@/services/tmdb';
+import { getContentDetailsEnriched } from '@/services/tmdbCached';
 import { getRatingsByImdbId } from '@/services/omdb';
 import { getImageUrl } from '@/services/api';
 import { mapProviderToServiceId } from '@/components/StreamingBadge';
@@ -17,6 +12,8 @@ import { formatRuntime, extractYear, getPartnerStatus } from '@/types/content';
 import { useAppStore } from '@/store/useAppStore';
 import { getUserInteractions } from '@/lib/services/interactionService';
 import { AdvancedFilters } from '@/types/content';
+import { cachedFetch, CacheKeys } from '@/lib/cache';
+import type { UserInteractionWithId } from '@/types/firestore';
 
 // Genre ID to name mapping (TMDB)
 const GENRE_MAP: Record<number, string> = {
@@ -121,27 +118,52 @@ export function useContentWithDetails(
                 i.status === 'liked' || i.status === 'Yes'
             );
 
-            // 3. Sort by Date Added (createdAt > updatedAt) descending
+            // 3. Sort based on filter
+            const sortBy = advancedFilters?.sortBy || 'latest';
+
             relevantItems.sort((a, b) => {
+                if (sortBy === 'highest_score') {
+                    // Sort by vote average (desc)
+                    const scoreA = a.meta?.voteAverage || 0;
+                    const scoreB = b.meta?.voteAverage || 0;
+                    if (scoreA !== scoreB) return scoreB - scoreA;
+                } else if (sortBy === 'popular') {
+                    // Sort by popularity (desc)
+                    const popA = a.meta?.popularity || 0;
+                    const popB = b.meta?.popularity || 0;
+                    if (popA !== popB) return popB - popA;
+                }
+
+                // Default / Fallback: Sort by Date Added (createdAt > updatedAt) descending
                 const dateA = a.createdAt?.toMillis() ?? a.updatedAt.toMillis();
                 const dateB = b.createdAt?.toMillis() ?? b.updatedAt.toMillis();
                 return dateB - dateA;
             });
 
-            // 4. Transform to MediaItem stubs
-            let mediaItems: MediaItem[] = relevantItems.map(i => ({
-                id: parseInt(i.tmdbId), // Ensure ID is number
-                mediaType: i.contentType,
-                title: '', // Will be filled by enrich
-                originalTitle: '',
-                overview: '',
-                posterPath: null,
-                backdropPath: null,
-                releaseDate: '',
-                voteAverage: 0,
-                voteCount: 0,
-                genreIds: [],
-            }));
+            // 4. Transform to MediaItem stubs (using persisted meta if available)
+            // Also keep a map of stored metadata for passing to enrichMediaItem
+            const storedMetaMap = new Map<number, UserInteractionWithId['meta']>();
+
+            let mediaItems: MediaItem[] = relevantItems.map(i => {
+                const id = parseInt(i.tmdbId);
+                if (i.meta) {
+                    storedMetaMap.set(id, i.meta);
+                }
+                return {
+                    id,
+                    mediaType: i.contentType,
+                    title: i.meta?.title || '',
+                    originalTitle: '',
+                    overview: '',
+                    posterPath: i.meta?.posterPath || null,
+                    backdropPath: null,
+                    releaseDate: i.meta?.releaseDate || '',
+                    voteAverage: i.meta?.voteAverage || 0,
+                    voteCount: 0,
+                    popularity: i.meta?.popularity || 0,
+                    genreIds: [],
+                };
+            });
 
             // 5. Apply Filters (Client-side)
 
@@ -185,11 +207,12 @@ export function useContentWithDetails(
 
             const slicedItems = mediaItems.slice(startIndex, endIndex);
 
-            // Fetch details for the slice
+            // Fetch details for the slice (uses stored meta when available to avoid API calls)
             const enrichedContent = await Promise.all(
                 slicedItems.map(async (item) => {
                     try {
-                        return await enrichMediaItem(item, partnerInteractions);
+                        const storedMeta = storedMetaMap.get(item.id);
+                        return await enrichMediaItem(item, partnerInteractions, storedMeta);
                     } catch (err) {
                         console.error(`Failed to enrich item ${item.id}:`, err);
                         return createBasicCardData(item, partnerInteractions);
@@ -292,23 +315,28 @@ export function useContentWithDetails(
 
 /**
  * Enrich a media item with full details, ratings, and streaming providers
+ * OPTIMIZED: Uses single API call with append_to_response via cached service
  */
 async function enrichMediaItem(
     item: MediaItem,
-    partnerInteractions: Record<string, PartnerStatus>
+    partnerInteractions: Record<string, PartnerStatus>,
+    storedMeta?: UserInteractionWithId['meta']
 ): Promise<ContentCardData> {
-    const [details, providers, externalIds] = await Promise.all([
-        item.mediaType === 'movie'
-            ? getMovieDetails(item.id)
-            : getTVDetails(item.id),
-        getWatchProviders(item.id, item.mediaType, 'US'),
-        getExternalIds(item.id, item.mediaType),
-    ]);
+    // If we have cached metadata in Firestore, use it to avoid API calls
+    if (storedMeta?.runtime !== undefined && storedMeta?.genres?.length) {
+        return createCardFromStoredMeta(item, storedMeta, partnerInteractions);
+    }
 
-    // Get ratings from OMDb if we have an IMDb ID
+    // Single API call with all data via append_to_response (replaces 4 separate calls)
+    const details = await getContentDetailsEnriched(item.id, item.mediaType);
+
+    // Get ratings from OMDb if we have an IMDb ID (cached)
     let ratings = { rottenTomatoes: null as string | null, imdbRating: null as string | null, metacritic: null as string | null };
-    if (externalIds.imdbId) {
-        const omdbRatings = await getRatingsByImdbId(externalIds.imdbId);
+    if (details.externalIds.imdbId) {
+        const omdbRatings = await cachedFetch(
+            CacheKeys.omdbRatings(details.externalIds.imdbId),
+            () => getRatingsByImdbId(details.externalIds.imdbId!)
+        );
         if (omdbRatings) {
             ratings = {
                 rottenTomatoes: omdbRatings.rottenTomatoes,
@@ -318,9 +346,9 @@ async function enrichMediaItem(
         }
     }
 
-    // Get first streaming provider
+    // Get first streaming provider from appended data
     let streamingProvider: ContentCardData['streamingProvider'] = null;
-    const flatrateProviders = providers?.flatrate || [];
+    const flatrateProviders = details.watchProviders?.flatrate || [];
     if (flatrateProviders.length > 0) {
         const firstProvider = flatrateProviders[0];
         streamingProvider = {
@@ -333,9 +361,9 @@ async function enrichMediaItem(
     // Get runtime
     let runtime = '';
     if (item.mediaType === 'movie' && 'runtime' in details) {
-        runtime = formatRuntime(details.runtime);
+        runtime = formatRuntime((details as any).runtime);
     } else if (item.mediaType === 'tv' && 'episodeRunTime' in details) {
-        const avgRuntime = details.episodeRunTime[0] || 0;
+        const avgRuntime = (details as any).episodeRunTime[0] || 0;
         runtime = formatRuntime(avgRuntime);
     }
 
@@ -364,6 +392,39 @@ async function enrichMediaItem(
         metacritic: ratings.metacritic,
         streamingProvider,
         partnerStatus,
+        voteAverage: details.voteAverage,
+        popularity: details.popularity,
+        releaseDate: details.releaseDate,
+    };
+}
+
+/**
+ * Create card data from stored Firestore metadata (no API calls needed)
+ */
+function createCardFromStoredMeta(
+    item: MediaItem,
+    meta: NonNullable<UserInteractionWithId['meta']>,
+    partnerInteractions: Record<string, PartnerStatus>
+): ContentCardData {
+    const genre = meta.genres?.length ? meta.genres[0] : '';
+    const runtime = meta.runtime ? formatRuntime(meta.runtime) : '';
+
+    return {
+        id: item.id,
+        mediaType: item.mediaType,
+        title: meta.title,
+        year: extractYear(meta.releaseDate || ''),
+        runtime,
+        genre,
+        posterUrl: getImageUrl(meta.posterPath, 'medium'),
+        rottenTomatoes: meta.rottenTomatoes || null,
+        imdbRating: meta.imdbRating || item.voteAverage?.toFixed(1) || null,
+        metacritic: null,
+        streamingProvider: null, // Would need to store this too for full optimization
+        partnerStatus: partnerInteractions[item.id.toString()] || null,
+        voteAverage: meta.voteAverage,
+        popularity: meta.popularity,
+        releaseDate: meta.releaseDate || '',
     };
 }
 
@@ -390,5 +451,8 @@ function createBasicCardData(
         metacritic: null,
         streamingProvider: null,
         partnerStatus: partnerInteractions[item.id.toString()] || null,
+        voteAverage: item.voteAverage,
+        popularity: item.popularity,
+        releaseDate: item.releaseDate,
     };
 }

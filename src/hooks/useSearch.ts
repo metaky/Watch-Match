@@ -1,11 +1,11 @@
-// Custom hook for search functionality
+// Custom hook for search functionality (OPTIMIZED - no per-item API calls)
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { searchMulti, getTrending, getMovieDetails, getTVDetails, getWatchProviders, discoverMedia } from '@/services/tmdb';
+import { searchMulti, getTrending, discoverMedia } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import type { ContentCardData, SearchFilters } from '@/types/content';
-import { extractYear, formatRuntime } from '@/types/content';
+import { extractYear } from '@/types/content';
 
 // Genre ID to name mapping from TMDB
 const GENRE_MAP: Record<number, string> = {
@@ -152,63 +152,37 @@ export function useSearch(
     }, [filters]);
 
     // Transform TMDB results to ContentCardData
-    const transformResults = useCallback(async (tmdbResults: { id: number; title: string; mediaType: 'movie' | 'tv'; posterPath: string | null; releaseDate: string; voteAverage: number; genreIds: number[] }[]): Promise<ContentCardData[]> => {
-        // Limit to avoid too many API calls
+    // OPTIMIZED: Uses only data from search API - no additional API calls
+    // Detail fetching (runtime, providers) is deferred to when user opens the detail modal
+    const transformResults = useCallback((tmdbResults: { id: number; title: string; mediaType: 'movie' | 'tv'; posterPath: string | null; releaseDate: string; voteAverage: number; genreIds: number[] }[]): ContentCardData[] => {
+        // Limit results for display
         const limitedResults = tmdbResults.slice(0, initialItemsCount);
 
-        const transformedResults = await Promise.all(
-            limitedResults.map(async (item) => {
-                try {
-                    // Get details for runtime
-                    let runtime = '';
-                    if (item.mediaType === 'movie') {
-                        const details = await getMovieDetails(item.id);
-                        runtime = formatRuntime(details.runtime);
-                    } else {
-                        const details = await getTVDetails(item.id);
-                        runtime = details.episodeRunTime?.[0]
-                            ? formatRuntime(details.episodeRunTime[0]) + '/ep'
-                            : '';
-                    }
+        return limitedResults.map((item) => {
+            // Map genre IDs to names using local mapping (no API call)
+            const genreNames = item.genreIds
+                .slice(0, 2)
+                .map(id => GENRE_MAP[id] || 'Unknown')
+                .join(', ');
 
-                    // Get watch providers
-                    const providers = await getWatchProviders(item.id, item.mediaType);
-                    const streamingProvider = providers?.flatrate?.[0]
-                        ? {
-                            id: 'other' as const,
-                            name: providers.flatrate[0].providerName,
-                            logoUrl: providers.flatrate[0].logoPath,
-                        }
-                        : null;
-
-                    // Map genre IDs to names
-                    const genreNames = item.genreIds
-                        .slice(0, 2)
-                        .map(id => GENRE_MAP[id] || 'Unknown')
-                        .join(', ');
-
-                    return {
-                        id: item.id,
-                        mediaType: item.mediaType,
-                        title: item.title,
-                        year: extractYear(item.releaseDate),
-                        runtime,
-                        genre: genreNames,
-                        posterUrl: item.posterPath ? getImageUrl(item.posterPath, 'medium') : null,
-                        rottenTomatoes: null, // Would need OMDb API
-                        imdbRating: item.voteAverage ? (item.voteAverage).toFixed(1) : null,
-                        metacritic: null,
-                        streamingProvider,
-                        partnerStatus: null, // Not in watchlist
-                    } as ContentCardData;
-                } catch (err) {
-                    console.error(`Error transforming item ${item.id}:`, err);
-                    return null;
-                }
-            })
-        );
-
-        return transformedResults.filter((item): item is ContentCardData => item !== null);
+            return {
+                id: item.id,
+                mediaType: item.mediaType,
+                title: item.title,
+                year: extractYear(item.releaseDate),
+                runtime: '', // Will be fetched when detail modal opens
+                genre: genreNames,
+                posterUrl: item.posterPath ? getImageUrl(item.posterPath, 'medium') : null,
+                rottenTomatoes: null, // Will be fetched when detail modal opens
+                imdbRating: item.voteAverage ? item.voteAverage.toFixed(1) : null,
+                metacritic: null,
+                streamingProvider: null, // Will be fetched when detail modal opens
+                partnerStatus: null, // Not in watchlist
+                voteAverage: item.voteAverage,
+                popularity: 0,
+                releaseDate: item.releaseDate,
+            } as ContentCardData;
+        });
     }, [initialItemsCount]);
 
     // Fetch content for browse mode (trending or discovered/sorted)
@@ -246,7 +220,7 @@ export function useSearch(
                 fetchedResults = await discoverMedia(mediaType as 'movie' | 'tv', tmdbSort);
             }
 
-            const transformed = await transformResults(fetchedResults.results);
+            const transformed = transformResults(fetchedResults.results);
             const filtered = applyFilters(transformed);
             setResults(filtered);
             setSuggestions(filtered.slice(0, 5)); // For checking
@@ -284,7 +258,7 @@ export function useSearch(
                 setSuggestions(searchResults.slice(0, 8).map(toSuggestion));
             }
 
-            const transformed = await transformResults(searchResults);
+            const transformed = transformResults(searchResults);
             let filtered = applyFilters(transformed);
 
             // Client-side sorting for search results (since API doesn't support sort_by with query)

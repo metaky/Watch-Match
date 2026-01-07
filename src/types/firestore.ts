@@ -53,6 +53,20 @@ export interface UserInteraction {
     status: InteractionStatus;
     updatedAt: Timestamp;
     createdAt?: Timestamp;
+    meta?: {
+        title: string;
+        posterPath: string | null;
+        voteAverage: number;
+        popularity: number;
+        releaseDate: string | null;
+        // Enriched metadata to reduce API calls
+        runtime?: number | null;
+        genres?: string[];
+        imdbRating?: string | null;
+        rottenTomatoes?: string | null;
+        backdropPath?: string | null;
+        overview?: string;
+    };
 }
 
 /**
@@ -71,13 +85,27 @@ export interface Match {
 }
 
 /**
+ * Content item reference with type info (for bundles)
+ */
+export interface BundleContentRef {
+    tmdbId: string;
+    mediaType: ContentType;
+    // Optional cached metadata for quick display
+    title?: string;
+    posterPath?: string;
+}
+
+/**
  * Curated content bundle created by a user.
  * Document ID: Auto-generated
  */
 export interface Bundle {
     title: string;
     createdBy: string;
+    /** @deprecated Use contentItems instead */
     contentIds: string[];
+    /** New: content items with type info */
+    contentItems?: BundleContentRef[];
     createdAt: Timestamp;
 }
 
@@ -103,6 +131,20 @@ export interface CreateInteractionInput {
     tmdbId: string;
     contentType: ContentType;
     status: InteractionStatus;
+    meta?: {
+        title: string;
+        posterPath: string | null;
+        voteAverage: number;
+        popularity: number;
+        releaseDate: string | null;
+        // Enriched metadata to reduce API calls
+        runtime?: number | null;
+        genres?: string[];
+        imdbRating?: string | null;
+        rottenTomatoes?: string | null;
+        backdropPath?: string | null;
+        overview?: string;
+    };
 }
 
 export interface CreateBundleInput {

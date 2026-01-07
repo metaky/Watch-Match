@@ -104,6 +104,7 @@ export async function setInteraction(
         contentType: input.contentType,
         status: input.status,
         updatedAt: serverTimestamp(),
+        ...(input.meta ? { meta: input.meta } : {}),
     };
 
     if (!exists) {

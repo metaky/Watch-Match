@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Share2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Share2, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SwipeableContentCard } from '@/components/SwipeableContentCard';
 import { BundleActionButtons } from '@/components/BundleActionButtons';
@@ -11,7 +11,8 @@ import { ViewMatchesButton } from '@/components/ViewMatchesButton';
 import { useAppStore } from '@/store/useAppStore';
 import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
-import { ContentDetailData, PartnerStatus } from '@/types/content';
+import { ContentDetailData, PartnerStatus, getPartnerStatus } from '@/types/content';
+import { getUserInteractions } from '@/lib/services/interactionService';
 
 // Bundle-specific rating for swipe actions
 type BundleRating = 'yes' | 'not_now' | 'never';
@@ -27,7 +28,7 @@ export default function BundleDetailPage() {
     const bundleId = params.id as string;
 
     // Global store
-    const { bundles, activeProfile, user1Watchlist, user2Watchlist } = useAppStore();
+    const { bundles, activeProfile } = useAppStore();
 
     // Find bundle from store
     const bundle = bundles.find((b) => b.id === bundleId);
@@ -38,59 +39,60 @@ export default function BundleDetailPage() {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [ratings, setRatings] = useState<Record<number, BundleRating>>({});
 
-    // Fetch content details
+
+    // Fetch content details and partner interactions from Firestore
     useEffect(() => {
         const fetchContent = async () => {
             if (!bundle) {
-                // If bundle isn't found immediately, it might be loading or truly missing.
-                // Stop loading state so "Bundle not found" UI can show.
                 setIsLoading(false);
                 return;
             }
 
             setIsLoading(true);
             try {
-                // Determine partner's watchlist based on active profile
-                // If active is user1, partner is user2
-                const partnerWatchlist = activeProfile === 'user1' ? user2Watchlist : user1Watchlist;
+                // Fetch partner's interactions from Firestore
+                const partnerId = activeProfile === 'user1' ? 'user2' : 'user1';
+                const partnerInteractions = await getUserInteractions(partnerId);
 
-                const items = await Promise.all(bundle.contentIds.map(async (idStr) => {
-                    const id = parseInt(idStr);
-                    let details: any; // using any temporarily to handle diff between movie/tv types easily
+                // Build a map of partner's interactions by tmdbId
+                const partnerInteractionMap: Record<string, PartnerStatus> = {};
+                partnerInteractions.forEach(i => {
+                    partnerInteractionMap[i.tmdbId] = getPartnerStatus(i.status);
+                });
+
+                // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
+                const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
+                    ? bundle.contentItems
+                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const })); // Legacy: assume movie
+
+                const items = await Promise.all(contentRefs.map(async (ref) => {
+                    const id = parseInt(ref.tmdbId);
+                    let details: any;
 
                     try {
-                        // Try fetching as movie first
-                        const movie = await getMovieDetails(id);
-                        if (movie) details = movie;
-                    } catch {
-                        // Fallback to TV
-                        try {
-                            const tv = await getTVDetails(id);
-                            if (tv) details = tv;
-                        } catch (e) {
-                            console.error(`Failed to load content ${id}`, e);
-                            return null;
+                        // Use mediaType directly instead of trial-and-error
+                        if (ref.mediaType === 'movie') {
+                            details = await getMovieDetails(id);
+                        } else {
+                            details = await getTVDetails(id);
                         }
+                    } catch (e) {
+                        console.error(`Failed to load content ${id}:`, e);
+                        return null;
                     }
 
                     if (!details) return null;
 
-                    // Fix ups for ContentDetailData structure
-                    // Map TMDB details to our internal type
                     const posterUrl = getImageUrl(details.posterPath, 'large');
-
-                    // Check if partner liked this (is in their watchlist)
-                    // In a real app we'd check specific status, here existence = liked for simplicity
-                    const partnerHasItem = partnerWatchlist.some(i => i.id === id);
-                    const partnerStatus: PartnerStatus = partnerHasItem ? 'liked' : null;
+                    // Get partner's status from Firestore interactions
+                    const partnerStatus: PartnerStatus = partnerInteractionMap[ref.tmdbId] || null;
 
                     return {
                         ...details,
                         posterUrl,
-                        // Defaults for required fields if missing
                         rating: undefined,
-                        userRating: null, // current user hasn't rated in this context yet
-                        addedBy: 'user', // Default to current user for now as we don't track creator per item yet
+                        userRating: null,
+                        addedBy: 'user',
                         watchProviders: null,
                         partnerStatus
                     } as BundleContentItem;
@@ -105,7 +107,7 @@ export default function BundleDetailPage() {
         };
 
         fetchContent();
-    }, [bundle, bundleId, activeProfile, user1Watchlist, user2Watchlist]);
+    }, [bundle, bundleId, activeProfile]);
 
     // Derived state
     const currentContent = contentItems[currentIndex];
@@ -134,6 +136,20 @@ export default function BundleDetailPage() {
     // Handle back navigation
     const handleBack = () => {
         router.push('/bundles');
+    };
+
+    // Handle delete bundle
+    const handleDelete = async () => {
+        if (!bundle) return;
+
+        if (window.confirm('Are you sure you want to delete this bundle? This action cannot be undone.')) {
+            // Remove from store
+            const { removeBundle } = useAppStore.getState();
+            removeBundle(bundleId);
+
+            // Redirect to bundles list
+            router.push('/bundles');
+        }
     };
 
     // Handle share
@@ -220,16 +236,30 @@ export default function BundleDetailPage() {
                     </h2>
                 </div>
 
-                <button
-                    onClick={handleShare}
-                    className={cn(
-                        'flex items-center justify-center size-10 rounded-full',
-                        'text-accent-primary hover:bg-bg-card transition-colors',
-                        'bg-accent-primary/10 border border-accent-primary/20'
-                    )}
-                >
-                    <Share2 className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleDelete}
+                        aria-label="Delete Bundle"
+                        className={cn(
+                            'flex items-center justify-center size-10 rounded-full',
+                            'text-accent-danger hover:bg-bg-card transition-colors',
+                            'bg-accent-danger/10 border border-accent-danger/20'
+                        )}
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+
+                    <button
+                        onClick={handleShare}
+                        className={cn(
+                            'flex items-center justify-center size-10 rounded-full',
+                            'text-accent-primary hover:bg-bg-card transition-colors',
+                            'bg-accent-primary/10 border border-accent-primary/20'
+                        )}
+                    >
+                        <Share2 className="w-5 h-5" />
+                    </button>
+                </div>
             </header>
 
             {/* Progress Indicator */}

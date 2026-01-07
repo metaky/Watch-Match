@@ -9,10 +9,11 @@ import { useAppStore } from '@/store/useAppStore';
 import { BundleDisplayData } from '@/lib/mockBundles';
 import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
+import { deleteBundle } from '@/lib/services/bundleService';
 
 export default function BundlesPage() {
     const router = useRouter();
-    const { bundles } = useAppStore();
+    const { bundles, removeBundle } = useAppStore();
     const [displayBundles, setDisplayBundles] = useState<BundleDisplayData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -82,9 +83,17 @@ export default function BundlesPage() {
         router.push(`/bundles/${bundle.id}`);
     };
 
-    const handleMenuClick = (bundle: BundleDisplayData) => {
-        console.log('Open bundle menu:', bundle.id);
-        // TODO: Show context menu
+    const handleDeleteBundle = async (bundle: BundleDisplayData) => {
+        try {
+            // Delete from Firestore
+            await deleteBundle(bundle.id);
+            // Remove from global store state
+            removeBundle(bundle.id);
+            // Remove from local display state
+            setDisplayBundles(prev => prev.filter(b => b.id !== bundle.id));
+        } catch (error) {
+            console.error('Failed to delete bundle:', error);
+        }
     };
 
     const handleSearch = () => {
@@ -145,7 +154,7 @@ export default function BundlesPage() {
                                 key={bundle.id}
                                 bundle={bundle}
                                 onClick={handleBundleClick}
-                                onMenuClick={handleMenuClick}
+                                onDeleteBundle={handleDeleteBundle}
                             />
                         ))}
                     </div>

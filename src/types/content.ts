@@ -78,6 +78,11 @@ export interface ContentCardData {
 
     // Partner's interaction status
     partnerStatus: PartnerStatus;
+
+    // Metadata for sorting (hidden from UI but used for logic)
+    voteAverage?: number;
+    popularity?: number;
+    releaseDate?: string;
 }
 
 /**

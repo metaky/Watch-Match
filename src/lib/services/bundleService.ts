@@ -108,22 +108,36 @@ export async function updateBundle(
 }
 
 /**
- * Add content to a bundle
+ * Add content to a bundle (optimized: stores mediaType to avoid trial-and-error API calls)
  */
 export async function addContentToBundle(
     bundleId: string,
-    tmdbId: string
+    tmdbId: string,
+    mediaType: 'movie' | 'tv',
+    metadata?: { title?: string; posterPath?: string }
 ): Promise<void> {
     const bundle = await getBundle(bundleId);
     if (!bundle) {
         throw new Error('Bundle not found');
     }
 
-    if (!bundle.contentIds.includes(tmdbId)) {
-        await updateDoc(doc(db, COLLECTION, bundleId), {
-            contentIds: [...bundle.contentIds, tmdbId],
-        });
+    // Check if already in bundle
+    if (bundle.contentIds.includes(tmdbId)) {
+        return;
     }
+
+    // Add to both legacy contentIds AND new contentItems
+    const newContentItem = {
+        tmdbId,
+        mediaType,
+        ...(metadata?.title && { title: metadata.title }),
+        ...(metadata?.posterPath && { posterPath: metadata.posterPath }),
+    };
+
+    await updateDoc(doc(db, COLLECTION, bundleId), {
+        contentIds: [...bundle.contentIds, tmdbId],
+        contentItems: [...(bundle.contentItems || []), newContentItem],
+    });
 }
 
 /**

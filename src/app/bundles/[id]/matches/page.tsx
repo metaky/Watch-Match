@@ -1,28 +1,135 @@
 // Matches page - shows content where both users said "yes" in a bundle
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Filter, Heart } from 'lucide-react';
+import { ArrowLeft, Filter, Heart, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MatchCard } from '@/components/MatchCard';
 import { ContentDetailModal } from '@/components/ContentDetailModal';
 import { MatchesFilterOverlay } from '@/components/ui/MatchesFilterOverlay';
-import { getMockBundleMatches, type BundleContentItem } from '@/lib/mockBundleContent';
-import { getMockBundles } from '@/lib/mockBundles';
-import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters } from '@/types/content';
+import { useAppStore } from '@/store/useAppStore';
+import { getMovieDetails, getTVDetails } from '@/services/tmdb';
+import { getImageUrl } from '@/services/api';
+import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters, PartnerStatus, getPartnerStatus } from '@/types/content';
+import { getUserInteractions } from '@/lib/services/interactionService';
+
+// Extended content item for match view
+interface MatchContentItem extends ContentDetailData {
+    addedBy: 'user' | 'partner';
+    watched?: boolean;
+}
 
 export default function MatchesPage() {
     const params = useParams();
     const router = useRouter();
     const bundleId = params.id as string;
 
-    // Get bundle info
-    const bundles = getMockBundles();
+    // Get bundle info from global store
+    const { bundles, activeProfile } = useAppStore();
     const bundle = bundles.find((b) => b.id === bundleId);
 
-    // Get matched items
-    const matches = useMemo(() => getMockBundleMatches(bundleId), [bundleId]);
+    // Content state
+    const [allContentItems, setAllContentItems] = useState<MatchContentItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch content details and determine matches based on BOTH users' Firestore interactions
+    useEffect(() => {
+        const fetchContent = async () => {
+            if (!bundle) {
+                setIsLoading(false);
+                return;
+            }
+
+            setIsLoading(true);
+            try {
+                // Fetch BOTH users' interactions from Firestore
+                const [user1Interactions, user2Interactions] = await Promise.all([
+                    getUserInteractions('user1'),
+                    getUserInteractions('user2')
+                ]);
+
+                // Build sets of content IDs where each user has said "liked" or "Yes"
+                const user1LikedSet = new Set<string>();
+                const user2LikedSet = new Set<string>();
+
+                user1Interactions.forEach(i => {
+                    if (i.status === 'liked' || i.status === 'Yes') {
+                        user1LikedSet.add(i.tmdbId);
+                    }
+                });
+
+                user2Interactions.forEach(i => {
+                    if (i.status === 'liked' || i.status === 'Yes') {
+                        user2LikedSet.add(i.tmdbId);
+                    }
+                });
+
+                // Determine partner based on active profile
+                const partnerLikedSet = activeProfile === 'user1' ? user2LikedSet : user1LikedSet;
+                const currentUserLikedSet = activeProfile === 'user1' ? user1LikedSet : user2LikedSet;
+
+                // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
+                const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
+                    ? bundle.contentItems
+                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
+
+                const items = await Promise.all(contentRefs.map(async (ref) => {
+                    const id = parseInt(ref.tmdbId);
+                    let details: any;
+
+                    try {
+                        if (ref.mediaType === 'movie') {
+                            details = await getMovieDetails(id);
+                        } else {
+                            details = await getTVDetails(id);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to load content ${id}`, e);
+                        return null;
+                    }
+
+                    if (!details) return null;
+
+                    const posterUrl = getImageUrl(details.posterPath, 'large');
+
+                    // Check if partner has liked this content
+                    const partnerLiked = partnerLikedSet.has(ref.tmdbId);
+                    const partnerStatus: PartnerStatus = partnerLiked ? 'liked' : null;
+
+                    // For matches, we also need to check if current user liked it
+                    const isMatch = currentUserLikedSet.has(ref.tmdbId) && partnerLikedSet.has(ref.tmdbId);
+
+                    return {
+                        ...details,
+                        posterUrl,
+                        rating: undefined,
+                        userRating: null,
+                        addedBy: 'user' as const,
+                        watchProviders: null,
+                        partnerStatus,
+                        isMatch  // Track if this is truly a match (both users liked)
+                    } as MatchContentItem & { isMatch: boolean };
+                }));
+
+                // Only keep items that are ACTUAL matches (both users liked)
+                const matchedItems = items.filter((item): item is (MatchContentItem & { isMatch: boolean }) =>
+                    item !== null && item.isMatch
+                );
+
+                setAllContentItems(matchedItems);
+            } catch (error) {
+                console.error("Error fetching bundle content:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchContent();
+    }, [bundle, bundleId, activeProfile]);
+
+    // All items in allContentItems are already matches (both users liked)
+    const matches = allContentItems;
 
     // Filter state
     const [filters, setFilters] = useState<MatchesFilters>(DEFAULT_MATCHES_FILTERS);
@@ -40,7 +147,7 @@ export default function MatchesPage() {
 
             // Filter by genre
             if (filters.genres.length > 0) {
-                if (!filters.genres.includes(match.genre)) {
+                if (!match.genre || !filters.genres.includes(match.genre)) {
                     return false;
                 }
             }
@@ -60,24 +167,34 @@ export default function MatchesPage() {
     const [selectedContent, setSelectedContent] = useState<ContentDetailData | null>(null);
 
     // Handle back navigation
-    const handleBack = () => {
+    const handleBack = useCallback(() => {
         router.push(`/bundles/${bundleId}`);
-    };
+    }, [router, bundleId]);
 
     // Handle card click - open detail modal
-    const handleCardClick = (content: BundleContentItem) => {
+    const handleCardClick = useCallback((content: MatchContentItem) => {
         setSelectedContent(content);
-    };
+    }, []);
 
     // Handle modal close
-    const handleCloseModal = () => {
+    const handleCloseModal = useCallback(() => {
         setSelectedContent(null);
-    };
+    }, []);
 
     // Handle filter button click
-    const handleFilterClick = () => {
+    const handleFilterClick = useCallback(() => {
         setShowFilters(true);
-    };
+    }, []);
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)]">
+                <Loader2 className="w-8 h-8 text-accent-primary animate-spin mb-4" />
+                <p className="text-text-secondary">Loading matches...</p>
+            </div>
+        );
+    }
 
     // If bundle not found
     if (!bundle) {

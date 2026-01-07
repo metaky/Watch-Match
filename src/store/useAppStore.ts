@@ -15,6 +15,10 @@ export interface WatchlistItem {
     title: string;
     posterPath: string | null;
     addedAt: Date;
+    // Metadata for sorting
+    voteAverage?: number;
+    popularity?: number;
+    releaseDate?: string;
 }
 
 export interface Match {
@@ -33,9 +37,8 @@ interface AppState {
     selectProfile: (profile: UserProfile) => void;
     toggleProfile: () => void;
 
-    // Watchlists for each user
-    user1Watchlist: WatchlistItem[];
-    user2Watchlist: WatchlistItem[];
+    // Shared watchlist (both users see the same list)
+    watchlist: WatchlistItem[];
 
     // Matches (items both users have added)
     matches: Match[];
@@ -99,8 +102,7 @@ export const useAppStore = create<AppState>()(
             // Initial state
             activeProfile: 'user1',
             hasSelectedProfile: false,
-            user1Watchlist: [],
-            user2Watchlist: [],
+            watchlist: [], // Single shared watchlist
             matches: [],
             user1Name: 'Kyle',
             user2Name: 'Melanie',
@@ -127,78 +129,34 @@ export const useAppStore = create<AppState>()(
                 activeProfile: state.activeProfile === 'user1' ? 'user2' : 'user1'
             })),
 
-            // Watchlist actions
+            // Watchlist actions - SHARED between both users
             addToWatchlist: (item) => {
-                const { activeProfile, user1Watchlist, user2Watchlist } = get();
+                const { activeProfile, watchlist } = get();
+
+                // Check if already in shared watchlist
+                if (watchlist.some(i => i.id === item.id && i.mediaType === item.mediaType)) {
+                    return;
+                }
+
                 const newItem: WatchlistItem = { ...item, addedAt: new Date() };
 
-                // Persist to Firestore (Fire and forget)
+                // Persist to Firestore for the active user (tracks who added it)
                 setInteraction({
                     userId: activeProfile,
                     tmdbId: item.id.toString(),
                     contentType: item.mediaType,
-                    status: 'liked', // 'liked' implies watchlist
+                    status: 'liked', // 'liked' implies added to watchlist
+                    meta: {
+                        title: item.title,
+                        posterPath: item.posterPath,
+                        voteAverage: item.voteAverage || 0,
+                        popularity: item.popularity || 0,
+                        releaseDate: item.releaseDate || null,
+                    }
                 }).catch(err => console.error("Failed to persist watchlist item", err));
 
-                if (activeProfile === 'user1') {
-                    // Check if already in watchlist
-                    if (user1Watchlist.some(i => i.id === item.id && i.mediaType === item.mediaType)) {
-                        return;
-                    }
-
-                    // Add to user1's watchlist
-                    const newUser1List = [...user1Watchlist, newItem];
-
-                    // Check for match
-                    const isMatch = user2Watchlist.some(
-                        i => i.id === item.id && i.mediaType === item.mediaType
-                    );
-
-                    if (isMatch) {
-                        const match: Match = {
-                            id: item.id,
-                            mediaType: item.mediaType,
-                            title: item.title,
-                            posterPath: item.posterPath,
-                            matchedAt: new Date(),
-                        };
-                        set((state) => ({
-                            user1Watchlist: newUser1List,
-                            matches: [...state.matches, match],
-                        }));
-                    } else {
-                        set({ user1Watchlist: newUser1List });
-                    }
-                } else {
-                    // Check if already in watchlist
-                    if (user2Watchlist.some(i => i.id === item.id && i.mediaType === item.mediaType)) {
-                        return;
-                    }
-
-                    // Add to user2's watchlist
-                    const newUser2List = [...user2Watchlist, newItem];
-
-                    // Check for match
-                    const isMatch = user1Watchlist.some(
-                        i => i.id === item.id && i.mediaType === item.mediaType
-                    );
-
-                    if (isMatch) {
-                        const match: Match = {
-                            id: item.id,
-                            mediaType: item.mediaType,
-                            title: item.title,
-                            posterPath: item.posterPath,
-                            matchedAt: new Date(),
-                        };
-                        set((state) => ({
-                            user2Watchlist: newUser2List,
-                            matches: [...state.matches, match],
-                        }));
-                    } else {
-                        set({ user2Watchlist: newUser2List });
-                    }
-                }
+                // Add to shared watchlist
+                set({ watchlist: [...watchlist, newItem] });
             },
 
             removeFromWatchlist: (id, mediaType) => {
@@ -208,19 +166,12 @@ export const useAppStore = create<AppState>()(
                 deleteInteraction(activeProfile, id.toString())
                     .catch(err => console.error("Failed to remove watchlist item from DB", err));
 
-                if (activeProfile === 'user1') {
-                    set((state) => ({
-                        user1Watchlist: state.user1Watchlist.filter(
-                            i => !(i.id === id && i.mediaType === mediaType)
-                        ),
-                    }));
-                } else {
-                    set((state) => ({
-                        user2Watchlist: state.user2Watchlist.filter(
-                            i => !(i.id === id && i.mediaType === mediaType)
-                        ),
-                    }));
-                }
+                // Remove from shared watchlist
+                set((state) => ({
+                    watchlist: state.watchlist.filter(
+                        i => !(i.id === id && i.mediaType === mediaType)
+                    ),
+                }));
             },
 
             clearMatches: () => set({ matches: [] }),
@@ -303,8 +254,7 @@ export const useAppStore = create<AppState>()(
                 hasSelectedProfile: state.hasSelectedProfile,
                 user1Name: state.user1Name,
                 user2Name: state.user2Name,
-                user1Watchlist: state.user1Watchlist,
-                user2Watchlist: state.user2Watchlist,
+                watchlist: state.watchlist,
                 matches: state.matches,
                 bundles: state.bundles,
             }),

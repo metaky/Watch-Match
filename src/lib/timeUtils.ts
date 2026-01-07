@@ -8,7 +8,29 @@ import { Timestamp } from 'firebase/firestore';
  */
 export function formatRelativeTime(date: Date | Timestamp): string {
     const now = new Date();
-    const targetDate = date instanceof Timestamp ? date.toDate() : date;
+    let targetDate: Date;
+
+    if (!date) {
+        return '';
+    }
+
+    // Handle Firestore Timestamp (instance or serialized)
+    if (typeof (date as any).toDate === 'function') {
+        targetDate = (date as Timestamp).toDate();
+    } else if (typeof (date as any).toMillis === 'function') {
+        targetDate = new Date((date as any).toMillis());
+    } else if ('seconds' in (date as any)) {
+        // Serialized timestamp
+        targetDate = new Date((date as any).seconds * 1000);
+    } else {
+        // Assume Date object, string, or number
+        targetDate = new Date(date as any);
+    }
+
+    // Check for invalid date
+    if (isNaN(targetDate.getTime())) {
+        return '';
+    }
     const diffMs = now.getTime() - targetDate.getTime();
 
     // Convert to various units

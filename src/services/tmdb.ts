@@ -12,6 +12,7 @@ export interface MediaItem {
     releaseDate: string;
     voteAverage: number;
     voteCount: number;
+    popularity: number;
     mediaType: 'movie' | 'tv';
     genreIds: number[];
 }
@@ -308,6 +309,7 @@ function normalizeMediaItem(item: Record<string, unknown>, forceType?: 'movie' |
         releaseDate: (isTV ? item.first_air_date : item.release_date) as string,
         voteAverage: item.vote_average as number,
         voteCount: item.vote_count as number,
+        popularity: item.popularity as number,
         mediaType: isTV ? 'tv' : 'movie',
         genreIds: (item.genre_ids as number[]) || [],
     };

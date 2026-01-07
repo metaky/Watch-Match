@@ -1,9 +1,9 @@
 // Bundle card component for displaying bundles with poster collage
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/timeUtils';
 import type { BundleDisplayData } from '@/lib/mockBundles';
@@ -11,19 +11,45 @@ import type { BundleDisplayData } from '@/lib/mockBundles';
 interface BundleCardProps {
     bundle: BundleDisplayData;
     onClick?: (bundle: BundleDisplayData) => void;
-    onMenuClick?: (bundle: BundleDisplayData) => void;
+    onDeleteBundle?: (bundle: BundleDisplayData) => void;
     className?: string;
 }
 
 export function BundleCard({
     bundle,
     onClick,
-    onMenuClick,
+    onDeleteBundle,
     className,
 }: BundleCardProps) {
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+
+        if (isMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMenuOpen]);
+
     const handleMenuClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onMenuClick?.(bundle);
+        setIsMenuOpen(!isMenuOpen);
+    };
+
+    const handleDeleteClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsMenuOpen(false);
+        onDeleteBundle?.(bundle);
     };
 
     const itemCount = bundle.contentIds.length;
@@ -95,18 +121,38 @@ export function BundleCard({
                     </div>
                 )}
 
-                {/* Menu Button (appears on hover) */}
-                <button
-                    onClick={handleMenuClick}
-                    className={cn(
-                        'absolute top-2 right-2 h-8 w-8 rounded-full',
-                        'flex items-center justify-center',
-                        'bg-black/40 backdrop-blur-sm text-white',
-                        'opacity-0 group-hover:opacity-100 transition-opacity'
+                {/* Menu Button (always visible) */}
+                <div ref={menuRef} className="absolute top-2 right-2">
+                    <button
+                        onClick={handleMenuClick}
+                        className={cn(
+                            'h-8 w-8 rounded-full',
+                            'flex items-center justify-center',
+                            'bg-black/40 backdrop-blur-sm text-white',
+                            'hover:bg-black/60 transition-colors'
+                        )}
+                        aria-label="Bundle options"
+                    >
+                        <MoreHorizontal className="w-4 h-4" />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isMenuOpen && (
+                        <div className="absolute top-full right-0 mt-1 min-w-[140px] bg-bg-card rounded-lg shadow-xl border border-white/10 overflow-hidden z-10">
+                            <button
+                                onClick={handleDeleteClick}
+                                className={cn(
+                                    'w-full flex items-center gap-2 px-3 py-2.5',
+                                    'text-left text-sm text-red-400',
+                                    'hover:bg-red-500/10 transition-colors'
+                                )}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete Bundle
+                            </button>
+                        </div>
                     )}
-                >
-                    <MoreHorizontal className="w-4 h-4" />
-                </button>
+                </div>
             </div>
 
             {/* Content */}

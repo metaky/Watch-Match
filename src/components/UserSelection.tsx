@@ -90,7 +90,7 @@ export function UserSelection() {
                 <div className="relative z-10 text-center transform transition-transform duration-500 group-hover:scale-110">
                     <div className="w-32 h-32 mb-6 rounded-full border-4 border-pink-400/50 shadow-2xl overflow-hidden bg-rose-900 mx-auto">
                         <img
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user2Name}&backgroundColor=ffd5dc`}
+                            src="https://api.dicebear.com/9.x/avataaars/svg?seed=Christopher&accessories=prescription02&accessoriesProbability=25&clothing=shirtCrewNeck&eyebrows=angryNatural,default,defaultNatural,flatNatural,frownNatural,raisedExcited,raisedExcitedNatural,sadConcerned,sadConcernedNatural,unibrowNatural,upDown,upDownNatural&facialHair[]&facialHairColor=d6b370&facialHairProbability=100&hairColor=d6b370&top=bob,longButNotTooLong,miaWallace"
                             alt={user2Name}
                             className="w-full h-full object-cover"
                         />
