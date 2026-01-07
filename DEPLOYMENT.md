@@ -25,24 +25,24 @@ git push origin main
 3. Select **"Continuously deploy from a repository"**
 4. Connect your GitHub repository
 5. Configure build:
-   - **Build type**: Dockerfile
-   - **Source location**: `/Dockerfile`
+   - **Configuration type**: Cloud Build configuration file (yaml or json)
+   - **Location**: `/cloudbuild.yaml`
 
 ### 3. Configure Environment Variables
 
-In Cloud Run service settings, add these **Build-time substitution variables**:
+In Cloud Run service settings (or the Cloud Build Trigger), add these **Substitution variables** (ensure they start with an underscore):
 
 | Variable | Value |
 |----------|-------|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | `AIzaSyCqCOb3sS1hvraWCsoyWe_Tm9GqvRUAgio` |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `watch-match-6ee61.firebaseapp.com` |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `watch-match-6ee61` |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `watch-match-6ee61.firebasestorage.app` |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `1028231844786` |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | `1:1028231844786:web:99bd7cd6c9a1b98456caab` |
-| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | `G-KB1W39Z39L` |
-| `NEXT_PUBLIC_TMDB_API_KEY` | `6cc8d21ba3543b7f5b7b8a65c0e2f0a1` |
-| `NEXT_PUBLIC_OMDB_API_KEY` | `a7e35212` |
+| `_NEXT_PUBLIC_FIREBASE_API_KEY` | `AIzaSyCqCOb3sS1hvraWCsoyWe_Tm9GqvRUAgio` |
+| `_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `watch-match-6ee61.firebaseapp.com` |
+| `_NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `watch-match-6ee61` |
+| `_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `watch-match-6ee61.firebasestorage.app` |
+| `_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `1028231844786` |
+| `_NEXT_PUBLIC_FIREBASE_APP_ID` | `1:1028231844786:web:99bd7cd6c9a1b98456caab` |
+| `_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | `G-KB1W39Z39L` |
+| `_NEXT_PUBLIC_TMDB_API_KEY` | `6cc8d21ba3543b7f5b7b8a65c0e2f0a1` |
+| `_NEXT_PUBLIC_OMDB_API_KEY` | `a7e35212` |
 
 ### 4. Service Settings
 
