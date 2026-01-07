@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Share2, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Share2, Loader2, Trash2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SwipeableContentCard } from '@/components/SwipeableContentCard';
 import { BundleActionButtons } from '@/components/BundleActionButtons';
@@ -35,13 +35,15 @@ export default function BundleDetailPage() {
     const bundle = bundles.find((b) => b.id === bundleId);
 
     // Local state
-    const [contentItems, setContentItems] = useState<BundleContentItem[]>([]);
+    const [allContentItems, setAllContentItems] = useState<BundleContentItem[]>([]); // All items in bundle
+    const [contentItems, setContentItems] = useState<BundleContentItem[]>([]); // Filtered items to show
     const [isLoading, setIsLoading] = useState(true);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [ratings, setRatings] = useState<Record<number, BundleRating>>({});
+    const [isReRating, setIsReRating] = useState(false); // Re-rate mode shows all items
 
 
-    // Fetch content details and partner interactions from Firestore
+    // Fetch content details and filter out already-rated items
     useEffect(() => {
         const fetchContent = async () => {
             if (!bundle) {
@@ -51,20 +53,32 @@ export default function BundleDetailPage() {
 
             setIsLoading(true);
             try {
-                // Fetch partner's interactions from Firestore
+                // Fetch BOTH users' interactions from Firestore
                 const partnerId = activeProfile === 'user1' ? 'user2' : 'user1';
-                const partnerInteractions = await getUserInteractions(partnerId);
+                const [partnerInteractions, currentUserInteractions] = await Promise.all([
+                    getUserInteractions(partnerId),
+                    getUserInteractions(activeProfile)
+                ]);
 
-                // Build a map of partner's interactions by tmdbId
+                // Build maps of interactions by tmdbId
                 const partnerInteractionMap: Record<string, PartnerStatus> = {};
                 partnerInteractions.forEach(i => {
                     partnerInteractionMap[i.tmdbId] = getPartnerStatus(i.status);
                 });
 
+                // Track which items the current user has already rated
+                const currentUserRatedSet = new Set<string>();
+                currentUserInteractions.forEach(i => {
+                    // Any status means they've rated it
+                    if (i.status) {
+                        currentUserRatedSet.add(i.tmdbId);
+                    }
+                });
+
                 // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
                 const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
                     ? bundle.contentItems
-                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const })); // Legacy: assume movie
+                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
 
                 const items = await Promise.all(contentRefs.map(async (ref) => {
                     const id = parseInt(ref.tmdbId);
@@ -75,14 +89,12 @@ export default function BundleDetailPage() {
                     let details: any;
 
                     try {
-                        // Try the specified mediaType first
                         if (ref.mediaType === 'movie') {
                             details = await getMovieDetails(id);
                         } else {
                             details = await getTVDetails(id);
                         }
                     } catch (e) {
-                        // Fallback: try the other media type in case it was stored incorrectly
                         console.warn(`Failed to load ${ref.mediaType} ${id}, trying fallback...`);
                         try {
                             if (ref.mediaType === 'movie') {
@@ -99,8 +111,8 @@ export default function BundleDetailPage() {
                     if (!details) return null;
 
                     const posterUrl = getImageUrl(details.posterPath, 'large');
-                    // Get partner's status from Firestore interactions
                     const partnerStatus: PartnerStatus = partnerInteractionMap[ref.tmdbId] || null;
+                    const alreadyRated = currentUserRatedSet.has(ref.tmdbId);
 
                     return {
                         ...details,
@@ -109,11 +121,26 @@ export default function BundleDetailPage() {
                         userRating: null,
                         addedBy: 'user',
                         watchProviders: null,
-                        partnerStatus
-                    } as BundleContentItem;
+                        partnerStatus,
+                        alreadyRated // Mark if user already rated this
+                    } as BundleContentItem & { alreadyRated: boolean };
                 }));
 
-                setContentItems(items.filter(Boolean) as BundleContentItem[]);
+                const validItems = items.filter(Boolean) as (BundleContentItem & { alreadyRated: boolean })[];
+
+                // Store all items for potential re-rating
+                setAllContentItems(validItems);
+
+                // Filter out already-rated items (unless in re-rate mode)
+                if (isReRating) {
+                    setContentItems(validItems);
+                } else {
+                    const unratedItems = validItems.filter(item => !item.alreadyRated);
+                    setContentItems(unratedItems);
+                }
+
+                // Reset index when content changes
+                setCurrentIndex(0);
             } catch (error) {
                 console.error("Error fetching bundle content:", error);
             } finally {
@@ -122,12 +149,14 @@ export default function BundleDetailPage() {
         };
 
         fetchContent();
-    }, [bundle, bundleId, activeProfile]);
+    }, [bundle, bundleId, activeProfile, isReRating]);
 
     // Derived state
     const currentContent = contentItems[currentIndex];
     const totalCount = contentItems.length;
-    const isComplete = currentIndex >= totalCount && totalCount > 0;
+    // isComplete: either we've rated through all remaining items, OR all items were already rated
+    const isComplete = (currentIndex >= totalCount && totalCount > 0) ||
+        (totalCount === 0 && allContentItems.length > 0);
     // Calculate matches based on items where both have said "yes" or partner liked + user liked
     // For now simple count of partner likes among visible items
     const matchCount = contentItems.filter(i => i.partnerStatus === 'liked').length;
@@ -203,6 +232,13 @@ export default function BundleDetailPage() {
         router.push(`/bundles/${bundleId}/matches`);
     };
 
+    // Handle re-rating the bundle
+    const handleReRate = () => {
+        setIsReRating(true);
+        setCurrentIndex(0);
+        setRatings({});
+    };
+
     // Loading state
     if (isLoading) {
         return (
@@ -231,8 +267,8 @@ export default function BundleDetailPage() {
         );
     }
 
-    // Empty state
-    if (contentItems.length === 0) {
+    // Empty state - only if bundle truly has no content
+    if (allContentItems.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
                 <p className="text-text-primary text-lg font-medium mb-2">No content in this bundle</p>
@@ -311,7 +347,12 @@ export default function BundleDetailPage() {
                             All Done!
                         </h3>
                         <p className="text-text-secondary mb-6">
-                            You&apos;ve rated all {totalCount} items in this bundle.
+                            {isReRating
+                                ? `You've re-rated all ${allContentItems.length} items in this bundle.`
+                                : totalCount > 0
+                                    ? `You've rated ${totalCount} new items in this bundle.`
+                                    : `You've already rated all ${allContentItems.length} items in this bundle.`
+                            }
                         </p>
                         <button
                             onClick={handleViewMatches}
@@ -323,6 +364,15 @@ export default function BundleDetailPage() {
                             )}
                         >
                             View Your Matches
+                        </button>
+
+                        {/* Re-rate option */}
+                        <button
+                            onClick={handleReRate}
+                            className="mt-6 flex items-center gap-2 text-text-tertiary hover:text-text-secondary transition-colors text-sm"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            <span>Re-rate this bundle</span>
                         </button>
                     </div>
                 ) : (
