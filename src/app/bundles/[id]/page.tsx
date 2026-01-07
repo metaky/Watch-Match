@@ -67,18 +67,32 @@ export default function BundleDetailPage() {
 
                 const items = await Promise.all(contentRefs.map(async (ref) => {
                     const id = parseInt(ref.tmdbId);
+                    if (isNaN(id)) {
+                        console.error(`Invalid tmdbId: ${ref.tmdbId}`);
+                        return null;
+                    }
                     let details: any;
 
                     try {
-                        // Use mediaType directly instead of trial-and-error
+                        // Try the specified mediaType first
                         if (ref.mediaType === 'movie') {
                             details = await getMovieDetails(id);
                         } else {
                             details = await getTVDetails(id);
                         }
                     } catch (e) {
-                        console.error(`Failed to load content ${id}:`, e);
-                        return null;
+                        // Fallback: try the other media type in case it was stored incorrectly
+                        console.warn(`Failed to load ${ref.mediaType} ${id}, trying fallback...`);
+                        try {
+                            if (ref.mediaType === 'movie') {
+                                details = await getTVDetails(id);
+                            } else {
+                                details = await getMovieDetails(id);
+                            }
+                        } catch (fallbackError) {
+                            console.error(`Failed to load content ${id} with both endpoints:`, fallbackError);
+                            return null;
+                        }
                     }
 
                     if (!details) return null;

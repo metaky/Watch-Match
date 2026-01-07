@@ -39,8 +39,8 @@ export default function Home() {
     loadMore,
   } = useContentWithDetails({
     filter: activeFilter,
-    // Pass advanced filters to hook
-    advancedFilters: hasActiveFilters(advancedFilters) ? advancedFilters : undefined,
+    // Always pass advanced filters so sorting changes are detected
+    advancedFilters: advancedFilters,
     limit: 10,
   });
 

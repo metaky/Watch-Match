@@ -274,7 +274,7 @@ export function FilterOverlay({
                     'fixed bottom-0 left-0 right-0 p-4',
                     'bg-bg-dark/95 backdrop-blur-xl',
                     'border-t border-border-default z-40',
-                    'pb-[max(1rem,env(safe-area-inset-bottom))]'
+                    'pb-[calc(80px+env(safe-area-inset-bottom,0px))]'
                 )}
             >
                 <button
