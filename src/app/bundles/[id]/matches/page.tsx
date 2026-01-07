@@ -14,6 +14,7 @@ import { getImageUrl } from '@/services/api';
 import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters, PartnerStatus, getPartnerStatus } from '@/types/content';
 import { getUserInteractions } from '@/lib/services/interactionService';
 
+
 // Extended content item for match view
 interface MatchContentItem extends ContentDetailData {
     addedBy: 'user' | 'partner';
