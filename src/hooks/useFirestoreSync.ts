@@ -2,9 +2,11 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAppStore, WatchlistItem } from '@/store/useAppStore';
 import { getUserInteractions } from '@/lib/services/interactionService';
 import { getAllBundles } from '@/lib/services/bundleService';
+import { getUidByProfile } from '@/lib/services/userService';
 import { UserInteractionWithId, BundleWithId } from '@/types/firestore';
 
 /**
@@ -40,6 +42,7 @@ function interactionToWatchlistItem(interaction: UserInteractionWithId): Watchli
  * Should be called once at the app root level.
  */
 export function useFirestoreSync() {
+    const { currentUser } = useAuth();
     const {
         isHydrated,
         setHydrated,
@@ -50,8 +53,8 @@ export function useFirestoreSync() {
     const hasInitialized = useRef(false);
 
     useEffect(() => {
-        // Only run once
-        if (hasInitialized.current || isHydrated) {
+        // Only run once and only when authenticated
+        if (hasInitialized.current || isHydrated || !currentUser) {
             return;
         }
         hasInitialized.current = true;
@@ -60,10 +63,16 @@ export function useFirestoreSync() {
             try {
                 console.log('[FirestoreSync] Starting hydration from Firestore...');
 
-                // Fetch interactions for both users in parallel
+                // Resolve UIDs for profiles
+                const [user1Uid, user2Uid] = await Promise.all([
+                    getUidByProfile('user1'),
+                    getUidByProfile('user2')
+                ]);
+
+                // Fetch interactions for both users in parallel (if UIDs found)
                 const [user1Interactions, user2Interactions, bundles] = await Promise.all([
-                    getUserInteractions('user1'),
-                    getUserInteractions('user2'),
+                    user1Uid ? getUserInteractions(user1Uid) : Promise.resolve([]),
+                    user2Uid ? getUserInteractions(user2Uid) : Promise.resolve([]),
                     getAllBundles(),
                 ]);
 
@@ -102,7 +111,7 @@ export function useFirestoreSync() {
         }
 
         syncFromFirestore();
-    }, [isHydrated, setHydrated, hydrateWatchlist, hydrateBundles]);
+    }, [currentUser, isHydrated, setHydrated, hydrateWatchlist, hydrateBundles]);
 
     return { isHydrated };
 }

@@ -6,6 +6,7 @@ import { LoginPage } from './LoginPage';
 import { UserSelection } from '@/components/UserSelection';
 import { useAppStore } from '@/store/useAppStore';
 import { getUserProfile } from '@/lib/services/userService';
+import { useFirestoreSync } from '@/hooks/useFirestoreSync';
 import { Loader2 } from 'lucide-react';
 
 /**
@@ -19,6 +20,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const { hasSelectedProfile, selectProfile } = useAppStore();
     const [isCheckingProfile, setIsCheckingProfile] = useState(false);
     const [hasCheckedProfile, setHasCheckedProfile] = useState(false);
+
+    // Sync from Firestore when authenticated
+    useFirestoreSync();
 
     // Check if the authenticated user has already claimed a profile
     useEffect(() => {

@@ -54,8 +54,7 @@ service cloud.firestore {
     // ============================================
     match /user_interactions/{interactionId} {
       // Users can only read their own interactions
-      allow read: if isAuthenticated() 
-        && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated();
       
       // Users can create interactions for themselves
       allow create: if isAuthenticated()

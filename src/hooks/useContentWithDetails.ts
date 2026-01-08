@@ -11,6 +11,7 @@ import type { ContentCardData, ContentFilter, PartnerStatus } from '@/types/cont
 import { formatRuntime, extractYear, getPartnerStatus } from '@/types/content';
 import { useAppStore } from '@/store/useAppStore';
 import { getUserInteractions } from '@/lib/services/interactionService';
+import { getUidByProfile } from '@/lib/services/userService';
 import { AdvancedFilters } from '@/types/content';
 import { cachedFetch, CacheKeys } from '@/lib/cache';
 
@@ -83,9 +84,13 @@ export function useContentWithDetails(
     useEffect(() => {
         const fetchInteractions = async () => {
             // If I am user1, I want user2's interactions
-            const partnerId = activeProfile === 'user1' ? 'user2' : 'user1';
+            const partnerProfile = activeProfile === 'user1' ? 'user2' : 'user1';
+
             try {
-                const interactions = await getUserInteractions(partnerId);
+                const partnerUid = await getUidByProfile(partnerProfile);
+                if (!partnerUid) return;
+
+                const interactions = await getUserInteractions(partnerUid);
                 const map: Record<string, PartnerStatus> = {};
                 interactions.forEach(i => {
                     // Convert Firestore status string to PartnerStatus using helper

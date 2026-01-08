@@ -7,6 +7,8 @@ import { Timestamp } from 'firebase/firestore';
 import { setInteraction, deleteInteraction } from '@/lib/services/interactionService';
 import { createBundle as createBundleInFirestore, deleteBundle as deleteBundleInFirestore, addContentToBundle, removeContentFromBundle } from '@/lib/services/bundleService';
 
+import { auth } from '@/lib/firebase';
+
 export type UserProfile = 'user1' | 'user2';
 
 export interface WatchlistItem {
@@ -150,154 +152,162 @@ export const useAppStore = create<AppState>()(
                 const newItem: WatchlistItem = { ...item, addedAt: new Date() };
 
                 // Persist to Firestore for the active user (tracks who added it)
-                setInteraction({
-                    userId: activeProfile,
-                    tmdbId: item.id.toString(),
-                    contentType: item.mediaType,
-                    status: 'liked', // 'liked' implies added to watchlist
-                    meta: {
-                        title: item.title,
-                        posterPath: item.posterPath,
-                        voteAverage: item.voteAverage || 0,
-                        popularity: item.popularity || 0,
-                        releaseDate: item.releaseDate || null,
+                const user = auth.currentUser;
+                if (user) {
+                    setInteraction({
+                        userId: user.uid,
+                        tmdbId: item.id.toString(),
+                        contentType: item.mediaType,
+                        status: 'liked', // 'liked' implies added to watchlist
+                        meta: {
+                            title: item.title,
+                            posterPath: item.posterPath,
+                            voteAverage: item.voteAverage || 0,
+                            popularity: item.popularity || 0,
+                            releaseDate: item.releaseDate || null,
+                        }
+                    }).catch(err => console.error("Failed to persist watchlist item", err));
+
+                    // Add to shared watchlist
+                    set({ watchlist: [...watchlist, newItem] });
+                },
+
+                removeFromWatchlist: (id, mediaType) => {
+                    const { activeProfile } = get();
+
+                    // Persist delete to Firestore
+                    const user = auth.currentUser;
+                    if (user) {
+                        deleteInteraction(user.uid, id.toString())
+                            .catch(err => console.error("Failed to remove watchlist item from DB", err));
                     }
-                }).catch(err => console.error("Failed to persist watchlist item", err));
 
-                // Add to shared watchlist
-                set({ watchlist: [...watchlist, newItem] });
-            },
-
-            removeFromWatchlist: (id, mediaType) => {
-                const { activeProfile } = get();
-
-                // Persist delete to Firestore
-                deleteInteraction(activeProfile, id.toString())
-                    .catch(err => console.error("Failed to remove watchlist item from DB", err));
-
-                // Remove from shared watchlist
-                set((state) => ({
-                    watchlist: state.watchlist.filter(
-                        i => !(i.id === id && i.mediaType === mediaType)
-                    ),
-                }));
-            },
-
-            clearMatches: () => set({ matches: [] }),
-
-            setUserName: (profile, name) => set((state) => ({
-                user1Name: profile === 'user1' ? name : state.user1Name,
-                user2Name: profile === 'user2' ? name : state.user2Name,
-            })),
-
-            setIsLoading: (loading) => set({ isLoading: loading }),
-
-            // Filter overlay actions
-            setFilterOverlayOpen: (open) => set({ isFilterOverlayOpen: open }),
-
-            setAdvancedFilters: (filters) => set({ advancedFilters: filters }),
-
-            updateAdvancedFilter: (key, value) => set((state) => ({
-                advancedFilters: { ...state.advancedFilters, [key]: value }
-            })),
-
-            resetAdvancedFilters: () => set({ advancedFilters: DEFAULT_FILTERS }),
-
-            // Search actions
-            setSearchQuery: (query) => set({ searchQuery: query }),
-            setSearchFilters: (filters) => set({ searchFilters: filters }),
-            updateSearchFilter: (key, value) => set((state) => ({
-                searchFilters: { ...state.searchFilters, [key]: value }
-            })),
-            resetSearchFilters: () => set({ searchFilters: DEFAULT_SEARCH_FILTERS }),
-
-            // Bundle actions
-            addBundle: (bundle) => {
-                const { activeProfile } = get();
-                const newBundle: BundleWithId = {
-                    ...bundle,
-                    id: `bundle-${Date.now()}`, // Temporary ID, will be replaced by Firestore
-                    createdAt: Timestamp.now(),
-                } as BundleWithId;
-
-                // Optimistically update local state
-                set((state) => ({ bundles: [...state.bundles, newBundle] }));
-
-                // Persist to Firestore
-                createBundleInFirestore({
-                    title: bundle.title,
-                    createdBy: activeProfile,
-                    contentIds: bundle.contentIds,
-                }).then((firestoreId) => {
-                    // Update the bundle with the real Firestore ID
+                    // Remove from shared watchlist
                     set((state) => ({
-                        bundles: state.bundles.map(b =>
-                            b.id === newBundle.id ? { ...b, id: firestoreId } : b
-                        )
+                        watchlist: state.watchlist.filter(
+                            i => !(i.id === id && i.mediaType === mediaType)
+                        ),
                     }));
-                }).catch(err => console.error('Failed to persist bundle to Firestore', err));
-            },
+                },
 
-            removeBundle: (id) => {
-                // Optimistically update local state
-                set((state) => ({
-                    bundles: state.bundles.filter(b => b.id !== id)
-                }));
+                    clearMatches: () => set({ matches: [] }),
 
-                // Persist to Firestore
-                deleteBundleInFirestore(id)
-                    .catch(err => console.error('Failed to delete bundle from Firestore', err));
-            },
+                        setUserName: (profile, name) => set((state) => ({
+                            user1Name: profile === 'user1' ? name : state.user1Name,
+                            user2Name: profile === 'user2' ? name : state.user2Name,
+                        })),
 
-            addItemToBundle: (bundleId, itemId, mediaType, metadata) => {
-                // Optimistically update local state
-                set((state) => ({
-                    bundles: state.bundles.map(b => {
-                        if (b.id === bundleId) {
-                            // Avoid duplicates
-                            if (b.contentIds.includes(itemId)) return b;
-                            return { ...b, contentIds: [...b.contentIds, itemId] };
-                        }
-                        return b;
-                    })
-                }));
+                            setIsLoading: (loading) => set({ isLoading: loading }),
 
-                // Persist to Firestore
-                addContentToBundle(bundleId, itemId, mediaType, metadata)
-                    .catch(err => console.error('Failed to add content to bundle in Firestore', err));
-            },
+                                // Filter overlay actions
+                                setFilterOverlayOpen: (open) => set({ isFilterOverlayOpen: open }),
 
-            removeItemFromBundle: (bundleId, itemId) => {
-                // Optimistically update local state
-                set((state) => ({
-                    bundles: state.bundles.map(b => {
-                        if (b.id === bundleId) {
-                            return { ...b, contentIds: b.contentIds.filter(id => id !== itemId) };
-                        }
-                        return b;
-                    })
-                }));
+                                    setAdvancedFilters: (filters) => set({ advancedFilters: filters }),
 
-                // Persist to Firestore
-                removeContentFromBundle(bundleId, itemId)
-                    .catch(err => console.error('Failed to remove content from bundle in Firestore', err));
-            },
+                                        updateAdvancedFilter: (key, value) => set((state) => ({
+                                            advancedFilters: { ...state.advancedFilters, [key]: value }
+                                        })),
 
-            // Content detail modal actions
-            setSelectedContent: (content) => set({ selectedContent: content }),
-            setDetailModalOpen: (open) => set({ isDetailModalOpen: open }),
-            openDetailModal: (content) => set({ selectedContent: content, isDetailModalOpen: true }),
-            closeDetailModal: () => set({ selectedContent: null, isDetailModalOpen: false }),
+                                            resetAdvancedFilters: () => set({ advancedFilters: DEFAULT_FILTERS }),
 
-            // Bundle modal actions
-            setBundleModalOpen: (open) => set({ isBundleModalOpen: open }),
-            openBundleModal: (content) => set({ contentToAddToBundle: content, isBundleModalOpen: true }),
-            closeBundleModal: () => set({ contentToAddToBundle: null, isBundleModalOpen: false }),
+                                                // Search actions
+                                                setSearchQuery: (query) => set({ searchQuery: query }),
+                                                    setSearchFilters: (filters) => set({ searchFilters: filters }),
+                                                        updateSearchFilter: (key, value) => set((state) => ({
+                                                            searchFilters: { ...state.searchFilters, [key]: value }
+                                                        })),
+                                                            resetSearchFilters: () => set({ searchFilters: DEFAULT_SEARCH_FILTERS }),
 
-            // Hydration actions
-            setHydrated: (hydrated) => set({ isHydrated: hydrated }),
-            hydrateWatchlist: (items) => set({ watchlist: items }),
-            hydrateBundles: (bundles) => set({ bundles }),
+                                                                // Bundle actions
+                                                                addBundle: (bundle) => {
+                                                                    const { activeProfile } = get();
+                                                                    const user = auth.currentUser;
+                                                                    const newBundle: BundleWithId = {
+                                                                        ...bundle,
+                                                                        id: `bundle-${Date.now()}`, // Temporary ID, will be replaced by Firestore
+                                                                        createdAt: Timestamp.now(),
+                                                                    } as BundleWithId;
+
+                                                                    // Optimistically update local state
+                                                                    set((state) => ({ bundles: [...state.bundles, newBundle] }));
+
+                                                                    // Persist to Firestore
+                                                                    if (user) {
+                                                                        createBundleInFirestore({
+                                                                            title: bundle.title,
+                                                                            createdBy: user.uid,
+                                                                            contentIds: bundle.contentIds,
+                                                                        }).then((firestoreId) => {
+                                                                            // Update the bundle with the real Firestore ID
+                                                                            set((state) => ({
+                                                                                bundles: state.bundles.map(b =>
+                                                                                    b.id === newBundle.id ? { ...b, id: firestoreId } : b
+                                                                                )
+                                                                            }));
+                                                                        }).catch(err => console.error('Failed to persist bundle to Firestore', err));
+                                                                    }
+                                                                },
+
+                                                                    removeBundle: (id) => {
+                                                                        // Optimistically update local state
+                                                                        set((state) => ({
+                                                                            bundles: state.bundles.filter(b => b.id !== id)
+                                                                        }));
+
+                                                                        // Persist to Firestore
+                                                                        deleteBundleInFirestore(id)
+                                                                            .catch(err => console.error('Failed to delete bundle from Firestore', err));
+                                                                    },
+
+                                                                        addItemToBundle: (bundleId, itemId, mediaType, metadata) => {
+                                                                            // Optimistically update local state
+                                                                            set((state) => ({
+                                                                                bundles: state.bundles.map(b => {
+                                                                                    if (b.id === bundleId) {
+                                                                                        // Avoid duplicates
+                                                                                        if (b.contentIds.includes(itemId)) return b;
+                                                                                        return { ...b, contentIds: [...b.contentIds, itemId] };
+                                                                                    }
+                                                                                    return b;
+                                                                                })
+                                                                            }));
+
+                                                                            // Persist to Firestore
+                                                                            addContentToBundle(bundleId, itemId, mediaType, metadata)
+                                                                                .catch(err => console.error('Failed to add content to bundle in Firestore', err));
+                                                                        },
+
+                                                                            removeItemFromBundle: (bundleId, itemId) => {
+                                                                                // Optimistically update local state
+                                                                                set((state) => ({
+                                                                                    bundles: state.bundles.map(b => {
+                                                                                        if (b.id === bundleId) {
+                                                                                            return { ...b, contentIds: b.contentIds.filter(id => id !== itemId) };
+                                                                                        }
+                                                                                        return b;
+                                                                                    })
+                                                                                }));
+
+                                                                                // Persist to Firestore
+                                                                                removeContentFromBundle(bundleId, itemId)
+                                                                                    .catch(err => console.error('Failed to remove content from bundle in Firestore', err));
+                                                                            },
+
+                                                                                // Content detail modal actions
+                                                                                setSelectedContent: (content) => set({ selectedContent: content }),
+                                                                                    setDetailModalOpen: (open) => set({ isDetailModalOpen: open }),
+                                                                                        openDetailModal: (content) => set({ selectedContent: content, isDetailModalOpen: true }),
+                                                                                            closeDetailModal: () => set({ selectedContent: null, isDetailModalOpen: false }),
+
+                                                                                                // Bundle modal actions
+                                                                                                setBundleModalOpen: (open) => set({ isBundleModalOpen: open }),
+                                                                                                    openBundleModal: (content) => set({ contentToAddToBundle: content, isBundleModalOpen: true }),
+                                                                                                        closeBundleModal: () => set({ contentToAddToBundle: null, isBundleModalOpen: false }),
+
+                                                                                                            // Hydration actions
+                                                                                                            setHydrated: (hydrated) => set({ isHydrated: hydrated }),
+                                                                                                                hydrateWatchlist: (items) => set({ watchlist: items }),
+                                                                                                                    hydrateBundles: (bundles) => set({ bundles }),
         }),
         {
             name: 'watch-match-storage',

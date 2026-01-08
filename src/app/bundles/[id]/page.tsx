@@ -13,6 +13,8 @@ import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import { ContentDetailData, PartnerStatus, getPartnerStatus } from '@/types/content';
 import { getUserInteractions, setInteraction } from '@/lib/services/interactionService';
+import { getUidByProfile } from '@/lib/services/userService';
+import { auth } from '@/lib/firebase';
 import { InteractionStatus } from '@/types/firestore';
 
 
@@ -55,10 +57,21 @@ export default function BundleDetailPage() {
             setIsLoading(true);
             try {
                 // Fetch BOTH users' interactions from Firestore
-                const partnerId = activeProfile === 'user1' ? 'user2' : 'user1';
+                const partnerProfile = activeProfile === 'user1' ? 'user2' : 'user1';
+
+                const [partnerUid, user] = await Promise.all([
+                    getUidByProfile(partnerProfile),
+                    Promise.resolve(auth.currentUser)
+                ]);
+
+                if (!user) {
+                    setIsLoading(false);
+                    return;
+                }
+
                 const [partnerInteractions, currentUserInteractions] = await Promise.all([
-                    getUserInteractions(partnerId),
-                    getUserInteractions(activeProfile)
+                    partnerUid ? getUserInteractions(partnerUid) : Promise.resolve([]),
+                    getUserInteractions(user.uid)
                 ]);
 
                 // Build maps of interactions by tmdbId
@@ -76,58 +89,70 @@ export default function BundleDetailPage() {
                     }
                 });
 
-                // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
-                const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
-                    ? bundle.contentItems
-                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
-
-                const items = await Promise.all(contentRefs.map(async (ref) => {
-                    const id = parseInt(ref.tmdbId);
-                    if (isNaN(id)) {
-                        console.error(`Invalid tmdbId: ${ref.tmdbId}`);
-                        return null;
-                    }
-                    let details: any;
-
-                    try {
-                        if (ref.mediaType === 'movie') {
-                            details = await getMovieDetails(id);
-                        } else {
-                            details = await getTVDetails(id);
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to load ${ref.mediaType} ${id}, trying fallback...`);
-                        try {
-                            if (ref.mediaType === 'movie') {
-                                details = await getTVDetails(id);
-                            } else {
-                                details = await getMovieDetails(id);
-                            }
-                        } catch (fallbackError) {
-                            console.error(`Failed to load content ${id} with both endpoints:`, fallbackError);
+                // Helper to fetch details for a list of refs
+                const fetchItemsForRefs = async (refs: { tmdbId: string, mediaType: 'movie' | 'tv' }[]) => {
+                    const results = await Promise.all(refs.map(async (ref) => {
+                        const id = parseInt(ref.tmdbId);
+                        if (isNaN(id)) {
+                            console.error(`Invalid tmdbId: ${ref.tmdbId}`);
                             return null;
                         }
-                    }
+                        let details: any;
 
-                    if (!details) return null;
+                        try {
+                            if (ref.mediaType === 'movie') {
+                                details = await getMovieDetails(id);
+                            } else {
+                                details = await getTVDetails(id);
+                            }
+                        } catch (e) {
+                            console.warn(`Failed to load ${ref.mediaType} ${id}, trying fallback...`);
+                            try {
+                                if (ref.mediaType === 'movie') {
+                                    details = await getTVDetails(id);
+                                } else {
+                                    details = await getMovieDetails(id);
+                                }
+                            } catch (fallbackError) {
+                                console.error(`Failed to load content ${id} with both endpoints:`, fallbackError);
+                                return null;
+                            }
+                        }
 
-                    const posterUrl = getImageUrl(details.posterPath, 'large');
-                    const partnerStatus: PartnerStatus = partnerInteractionMap[ref.tmdbId] || null;
-                    const alreadyRated = currentUserRatedSet.has(ref.tmdbId);
+                        if (!details) return null;
 
-                    return {
-                        ...details,
-                        posterUrl,
-                        rating: undefined,
-                        userRating: null,
-                        addedBy: 'user',
-                        watchProviders: null,
-                        partnerStatus,
-                        alreadyRated // Mark if user already rated this
-                    } as BundleContentItem & { alreadyRated: boolean };
-                }));
+                        const posterUrl = getImageUrl(details.posterPath, 'large');
+                        const partnerStatus: PartnerStatus = partnerInteractionMap[ref.tmdbId] || null;
+                        const alreadyRated = currentUserRatedSet.has(ref.tmdbId);
 
-                const validItems = items.filter(Boolean) as (BundleContentItem & { alreadyRated: boolean })[];
+                        return {
+                            ...details,
+                            posterUrl,
+                            rating: undefined,
+                            userRating: null,
+                            addedBy: 'user',
+                            watchProviders: null,
+                            partnerStatus,
+                            alreadyRated
+                        } as BundleContentItem & { alreadyRated: boolean };
+                    }));
+                    return results.filter(Boolean) as (BundleContentItem & { alreadyRated: boolean })[];
+                };
+
+                // Strategy 1: Try using contentItems (newer bundles)
+                let validItems: (BundleContentItem & { alreadyRated: boolean })[] = [];
+
+                if (bundle.contentItems && bundle.contentItems.length > 0) {
+                    validItems = await fetchItemsForRefs(bundle.contentItems);
+                }
+
+                // Strategy 2: If no items found but we have IDs, fallback to contentIds (legacy/migration)
+                if (validItems.length === 0 && bundle.contentIds && bundle.contentIds.length > 0) {
+                    console.log("Fallback: contentItems yielded 0 results, trying contentIds...");
+                    // Assume movie by default for legacy, but the fetch logic tries both anyway
+                    const legacyRefs = bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
+                    validItems = await fetchItemsForRefs(legacyRefs);
+                }
 
                 // Store all items for potential re-rating
                 setAllContentItems(validItems);
@@ -180,12 +205,15 @@ export default function BundleDetailPage() {
         };
 
         // Persist to Firestore
-        setInteraction({
-            userId: activeProfile,
-            tmdbId: currentContent.id.toString(),
-            contentType: currentContent.mediaType,
-            status: statusMap[rating],
-        }).catch(err => console.error('Failed to save bundle rating:', err));
+        const user = auth.currentUser;
+        if (user) {
+            setInteraction({
+                userId: user.uid,
+                tmdbId: currentContent.id.toString(),
+                contentType: currentContent.mediaType,
+                status: statusMap[rating],
+            }).catch(err => console.error('Failed to save bundle rating:', err));
+        }
 
         // Move to next card
         setCurrentIndex((prev) => prev + 1);

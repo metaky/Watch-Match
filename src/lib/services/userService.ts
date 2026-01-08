@@ -5,7 +5,13 @@ import {
     setDoc,
     updateDoc,
     deleteDoc,
+    deleteDoc,
     serverTimestamp,
+    query,
+    where,
+    limit,
+    collection,
+    getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
@@ -148,4 +154,23 @@ export async function setUserProfile(
         },
         { merge: true }
     );
+}
+
+/**
+ * Get the UID of the user who has claimed a specific profile
+ */
+export async function getUidByProfile(profile: 'user1' | 'user2'): Promise<string | null> {
+    const q = query(
+        collection(db, COLLECTION),
+        where('profile', '==', profile),
+        limit(1)
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+        return null;
+    }
+
+    return querySnapshot.docs[0].id;
 }

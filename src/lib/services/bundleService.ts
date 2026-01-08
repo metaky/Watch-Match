@@ -154,6 +154,9 @@ export async function removeContentFromBundle(
 
     await updateDoc(doc(db, COLLECTION, bundleId), {
         contentIds: bundle.contentIds.filter((id) => id !== tmdbId),
+        ...(bundle.contentItems && {
+            contentItems: bundle.contentItems.filter((item) => item.tmdbId !== tmdbId),
+        }),
     });
 }
 
