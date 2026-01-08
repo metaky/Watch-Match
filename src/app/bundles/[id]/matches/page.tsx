@@ -13,6 +13,7 @@ import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters, PartnerStatus, getPartnerStatus } from '@/types/content';
 import { getUserInteractions } from '@/lib/services/interactionService';
+import { updateBundleContentItemMediaType } from '@/lib/services/bundleService';
 
 
 // Extended content item for match view
@@ -95,8 +96,14 @@ export default function MatchesPage() {
                         try {
                             if (ref.mediaType === 'movie') {
                                 details = await getTVDetails(id);
+                                // Self-healing: Update bundle with correct media type
+                                updateBundleContentItemMediaType(bundleId, ref.tmdbId, 'tv')
+                                    .catch(e => console.warn('Failed to auto-correct bundle item:', e));
                             } else {
                                 details = await getMovieDetails(id);
+                                // Self-healing: Update bundle with correct media type
+                                updateBundleContentItemMediaType(bundleId, ref.tmdbId, 'movie')
+                                    .catch(e => console.warn('Failed to auto-correct bundle item:', e));
                             }
                         } catch (fallbackError) {
                             console.error(`Failed to load content ${id} with both endpoints:`, fallbackError);

@@ -160,10 +160,37 @@ export async function removeContentFromBundle(
     });
 }
 
+
 /**
  * Delete a bundle
  */
 export async function deleteBundle(id: string): Promise<void> {
     const docRef = doc(db, COLLECTION, id);
     await deleteDoc(docRef);
+}
+
+/**
+ * Update a specific content item's media type in a bundle
+ * Used for self-healing when we detect an item stored with the wrong type
+ */
+export async function updateBundleContentItemMediaType(
+    bundleId: string,
+    tmdbId: string,
+    newMediaType: 'movie' | 'tv'
+): Promise<void> {
+    const bundle = await getBundle(bundleId);
+    if (!bundle || !bundle.contentItems) {
+        return;
+    }
+
+    const updatedItems = bundle.contentItems.map((item) => {
+        if (item.tmdbId === tmdbId) {
+            return { ...item, mediaType: newMediaType };
+        }
+        return item;
+    });
+
+    await updateDoc(doc(db, COLLECTION, bundleId), {
+        contentItems: updatedItems,
+    });
 }

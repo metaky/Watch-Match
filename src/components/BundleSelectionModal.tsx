@@ -40,7 +40,11 @@ export function BundleSelectionModal({
 
         addBundle({
             title: newBundleTitle,
-            createdBy: 'user-1', // Mock user ID for now
+            title: newBundleTitle,
+            // Store will replace this with auth.currentUser.uid for Firestore
+            // We pass a placeholder here for local optimistic update
+            createdBy: activeProfile === 'user1' ? 'user-1' : 'user-2',
+            contentIds: [contentToAdd.id.toString()],
             contentIds: [contentToAdd.id.toString()],
         });
 

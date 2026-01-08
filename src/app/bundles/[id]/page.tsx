@@ -15,6 +15,7 @@ import { ContentDetailData, PartnerStatus, getPartnerStatus } from '@/types/cont
 import { getUserInteractions, setInteraction } from '@/lib/services/interactionService';
 import { getUidByProfile } from '@/lib/services/userService';
 import { auth } from '@/lib/firebase';
+import { updateBundleContentItemMediaType } from '@/lib/services/bundleService';
 import { InteractionStatus } from '@/types/firestore';
 
 
@@ -110,8 +111,14 @@ export default function BundleDetailPage() {
                             try {
                                 if (ref.mediaType === 'movie') {
                                     details = await getTVDetails(id);
+                                    // Self-healing: Update bundle with correct media type
+                                    updateBundleContentItemMediaType(bundleId, ref.tmdbId, 'tv')
+                                        .catch(e => console.warn('Failed to auto-correct bundle item:', e));
                                 } else {
                                     details = await getMovieDetails(id);
+                                    // Self-healing: Update bundle with correct media type
+                                    updateBundleContentItemMediaType(bundleId, ref.tmdbId, 'movie')
+                                        .catch(e => console.warn('Failed to auto-correct bundle item:', e));
                                 }
                             } catch (fallbackError) {
                                 console.warn(`Failed to load content ${id} (tried both movie/tv)`);
