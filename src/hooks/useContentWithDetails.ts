@@ -1,7 +1,7 @@
 // Hook for fetching content with full details (OPTIMIZED - uses cached TMDB service)
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { type MediaItem } from '@/services/tmdb';
 import { getContentDetailsEnriched } from '@/services/tmdbCached';
 import { getRatingsByImdbId } from '@/services/omdb';
@@ -74,7 +74,7 @@ export function useContentWithDetails(
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState<Error | null>(null);
-    const [page, setPage] = useState(1);
+    const pageRef = useRef(1);
     const [hasMore, setHasMore] = useState(true);
 
     // Store partner interactions map
@@ -109,7 +109,7 @@ export function useContentWithDetails(
             setIsLoadingMore(true);
         } else {
             setIsLoading(true);
-            setPage(1);
+            pageRef.current = 1;
         }
         setError(null);
 
@@ -199,7 +199,7 @@ export function useContentWithDetails(
             // I'll stick to paginating the sorted ID list.
 
             const totalItems = mediaItems.length;
-            const nextPage = isLoadMore ? page + 1 : 1;
+            const nextPage = isLoadMore ? pageRef.current + 1 : 1;
             const startIndex = (nextPage - 1) * limit;
             const endIndex = startIndex + limit;
 
@@ -296,7 +296,7 @@ export function useContentWithDetails(
 
             if (isLoadMore) {
                 setContent(prev => [...prev, ...finalContent]);
-                setPage(nextPage);
+                pageRef.current = nextPage;
             } else {
                 setContent(finalContent);
             }
@@ -309,11 +309,11 @@ export function useContentWithDetails(
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [filter, page, advancedFilters, partnerInteractions, activeProfile, limit]);
+    }, [filter, advancedFilters, partnerInteractions, activeProfile, limit, watchlist]);
 
     useEffect(() => {
         fetchContent(false);
-    }, [fetchContent, filter, advancedFilters, partnerInteractions]);
+    }, [fetchContent]);
 
     return {
         content,
