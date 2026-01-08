@@ -11,8 +11,8 @@ import { MatchesFilterOverlay } from '@/components/ui/MatchesFilterOverlay';
 import { useAppStore } from '@/store/useAppStore';
 import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
-import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters, PartnerStatus, getPartnerStatus } from '@/types/content';
-import { getUserInteractions } from '@/lib/services/interactionService';
+import { type ContentDetailData, type MatchesFilters, DEFAULT_MATCHES_FILTERS, hasActiveMatchesFilters, PartnerStatus } from '@/types/content';
+import { getAllBundleInteractions } from '@/lib/services/bundleInteractionService';
 import { updateBundleContentItemMediaType } from '@/lib/services/bundleService';
 
 
@@ -45,31 +45,33 @@ export default function MatchesPage() {
 
             setIsLoading(true);
             try {
-                // Fetch BOTH users' interactions from Firestore
-                const [user1Interactions, user2Interactions] = await Promise.all([
-                    getUserInteractions('user1'),
-                    getUserInteractions('user2')
-                ]);
+                // Fetch ALL users' bundle-scoped interactions from Firestore
+                const bundleInteractions = await getAllBundleInteractions(bundleId);
 
-                // Build sets of content IDs where each user has said "liked" or "Yes"
+                // Build sets of content IDs where each user has said "yes" IN THIS BUNDLE
                 const user1LikedSet = new Set<string>();
                 const user2LikedSet = new Set<string>();
 
-                user1Interactions.forEach(i => {
-                    if (i.status === 'liked' || i.status === 'Yes') {
-                        user1LikedSet.add(i.tmdbId);
+                // Group by userId and check for 'yes' status
+                bundleInteractions.forEach(i => {
+                    if (i.status === 'yes') {
+                        // We need to determine which user this is
+                        // For simplicity, we'll collect all UIDs that said 'yes' per tmdbId
+                        // and then check if we have at least 2 different users
+                        user1LikedSet.add(`${i.userId}_${i.tmdbId}`);
                     }
                 });
 
-                user2Interactions.forEach(i => {
-                    if (i.status === 'liked' || i.status === 'Yes') {
-                        user2LikedSet.add(i.tmdbId);
+                // Build a map of tmdbId -> set of userIds who said 'yes'
+                const yesVotesByContent: Record<string, Set<string>> = {};
+                bundleInteractions.forEach(i => {
+                    if (i.status === 'yes') {
+                        if (!yesVotesByContent[i.tmdbId]) {
+                            yesVotesByContent[i.tmdbId] = new Set();
+                        }
+                        yesVotesByContent[i.tmdbId].add(i.userId);
                     }
                 });
-
-                // Determine partner based on active profile
-                const partnerLikedSet = activeProfile === 'user1' ? user2LikedSet : user1LikedSet;
-                const currentUserLikedSet = activeProfile === 'user1' ? user1LikedSet : user2LikedSet;
 
                 // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
                 const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
@@ -115,12 +117,13 @@ export default function MatchesPage() {
 
                     const posterUrl = getImageUrl(details.posterPath, 'large');
 
-                    // Check if partner has liked this content
-                    const partnerLiked = partnerLikedSet.has(ref.tmdbId);
-                    const partnerStatus: PartnerStatus = partnerLiked ? 'liked' : null;
+                    // Check if partner has liked this content IN THIS BUNDLE
+                    const yesVoters = yesVotesByContent[ref.tmdbId] || new Set();
+                    const hasMultipleYesVotes = yesVoters.size >= 2;
+                    const partnerStatus: PartnerStatus = hasMultipleYesVotes ? 'liked' : null;
 
-                    // For matches, we also need to check if current user liked it
-                    const isMatch = currentUserLikedSet.has(ref.tmdbId) && partnerLikedSet.has(ref.tmdbId);
+                    // A match = at least 2 different users said 'yes' in this bundle
+                    const isMatch = hasMultipleYesVotes;
 
                     return {
                         ...details,

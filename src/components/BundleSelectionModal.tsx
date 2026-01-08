@@ -18,7 +18,7 @@ export function BundleSelectionModal({
     onClose,
     contentToAdd,
 }: BundleSelectionModalProps) {
-    const { bundles, addBundle, addItemToBundle, addToWatchlist, user1Name } = useAppStore();
+    const { bundles, addBundle, addItemToBundle, addToWatchlist, user1Name, activeProfile } = useAppStore();
     const [isCreating, setIsCreating] = useState(false);
     const [newBundleTitle, setNewBundleTitle] = useState('');
 
@@ -40,11 +40,9 @@ export function BundleSelectionModal({
 
         addBundle({
             title: newBundleTitle,
-            title: newBundleTitle,
             // Store will replace this with auth.currentUser.uid for Firestore
             // We pass a placeholder here for local optimistic update
             createdBy: activeProfile === 'user1' ? 'user-1' : 'user-2',
-            contentIds: [contentToAdd.id.toString()],
             contentIds: [contentToAdd.id.toString()],
         });
 

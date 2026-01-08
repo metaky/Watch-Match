@@ -11,12 +11,13 @@ import { ViewMatchesButton } from '@/components/ViewMatchesButton';
 import { useAppStore } from '@/store/useAppStore';
 import { getMovieDetails, getTVDetails } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
-import { ContentDetailData, PartnerStatus, getPartnerStatus } from '@/types/content';
-import { getUserInteractions, setInteraction } from '@/lib/services/interactionService';
+import { ContentDetailData, PartnerStatus } from '@/types/content';
+import { setInteraction } from '@/lib/services/interactionService';
+import { getBundleInteractions, setBundleInteraction } from '@/lib/services/bundleInteractionService';
 import { getUidByProfile } from '@/lib/services/userService';
 import { auth } from '@/lib/firebase';
 import { updateBundleContentItemMediaType } from '@/lib/services/bundleService';
-import { InteractionStatus } from '@/types/firestore';
+import { BundleRatingStatus } from '@/types/firestore';
 
 
 // Bundle-specific rating for swipe actions
@@ -57,7 +58,7 @@ export default function BundleDetailPage() {
 
             setIsLoading(true);
             try {
-                // Fetch BOTH users' interactions from Firestore
+                // Fetch BOTH users' BUNDLE-SCOPED interactions from Firestore
                 const partnerProfile = activeProfile === 'user1' ? 'user2' : 'user1';
 
                 const [partnerUid, user] = await Promise.all([
@@ -70,21 +71,23 @@ export default function BundleDetailPage() {
                     return;
                 }
 
-                const [partnerInteractions, currentUserInteractions] = await Promise.all([
-                    partnerUid ? getUserInteractions(partnerUid) : Promise.resolve([]),
-                    getUserInteractions(user.uid)
+                // Get bundle-scoped interactions (not global)
+                const [partnerBundleInteractions, currentUserBundleInteractions] = await Promise.all([
+                    partnerUid ? getBundleInteractions(bundleId, partnerUid) : Promise.resolve([]),
+                    getBundleInteractions(bundleId, user.uid)
                 ]);
 
-                // Build maps of interactions by tmdbId
+                // Build maps of bundle interactions by tmdbId
+                // Partner status: 'yes' in this bundle = 'liked' for UI display
                 const partnerInteractionMap: Record<string, PartnerStatus> = {};
-                partnerInteractions.forEach(i => {
-                    partnerInteractionMap[i.tmdbId] = getPartnerStatus(i.status);
+                partnerBundleInteractions.forEach(i => {
+                    partnerInteractionMap[i.tmdbId] = i.status === 'yes' ? 'liked' : null;
                 });
 
-                // Track which items the current user has already rated
+                // Track which items the current user has already rated IN THIS BUNDLE
                 const currentUserRatedSet = new Set<string>();
-                currentUserInteractions.forEach(i => {
-                    // Any status means they've rated it
+                currentUserBundleInteractions.forEach(i => {
+                    // Any status means they've rated it in this bundle
                     if (i.status) {
                         currentUserRatedSet.add(i.tmdbId);
                     }
@@ -207,29 +210,34 @@ export default function BundleDetailPage() {
             [currentContent.id]: rating,
         }));
 
-        // Map bundle ratings to Firestore InteractionStatus
-        const statusMap: Record<BundleRating, InteractionStatus> = {
-            'yes': 'liked',           // Map 'yes' to 'liked' for consistency with matches detection
-            'not_now': 'not_important',
-            'never': 'wont_watch'
-        };
-
-        // Persist to Firestore
+        // Persist to bundle-scoped Firestore collection
         const user = auth.currentUser;
         if (user) {
-            setInteraction({
+            // Save to bundle_interactions (bundle-scoped)
+            setBundleInteraction({
+                bundleId,
                 userId: user.uid,
                 tmdbId: currentContent.id.toString(),
                 contentType: currentContent.mediaType,
-                status: statusMap[rating],
+                status: rating as BundleRatingStatus,
             }).catch(err => console.error('Failed to save bundle rating:', err));
+
+            // EXCEPTION: If rating is 'never', also add to global watchlist as 'wont_watch'
+            if (rating === 'never') {
+                setInteraction({
+                    userId: user.uid,
+                    tmdbId: currentContent.id.toString(),
+                    contentType: currentContent.mediaType,
+                    status: 'wont_watch',
+                }).catch(err => console.error('Failed to propagate never rating to watchlist:', err));
+            }
         }
 
         // Move to next card
         setCurrentIndex((prev) => prev + 1);
 
         console.log(`Rated ${currentContent.title}: ${rating}`);
-    }, [currentContent, activeProfile]);
+    }, [currentContent, bundleId]);
 
     // Handle back navigation
     const handleBack = () => {

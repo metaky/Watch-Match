@@ -174,6 +174,36 @@ export interface UserInteractionWithId extends UserInteraction {
     id: string;
 }
 
+// Bundle-scoped rating status (different from global InteractionStatus)
+export type BundleRatingStatus = 'yes' | 'not_now' | 'never';
+
+/**
+ * Bundle-scoped interaction (ratings within a specific bundle).
+ * These ratings only affect the bundle they belong to.
+ * Document ID: `{bundleId}_{userId}_{tmdbId}`
+ */
+export interface BundleInteraction {
+    bundleId: string;
+    userId: string;
+    tmdbId: string;
+    contentType: ContentType;
+    status: BundleRatingStatus;
+    updatedAt: Timestamp;
+    createdAt?: Timestamp;
+}
+
+export interface BundleInteractionWithId extends BundleInteraction {
+    id: string;
+}
+
+export interface CreateBundleInteractionInput {
+    bundleId: string;
+    userId: string;
+    tmdbId: string;
+    contentType: ContentType;
+    status: BundleRatingStatus;
+}
+
 export interface MatchWithId extends Match {
     id: string;
 }

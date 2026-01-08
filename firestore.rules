@@ -117,5 +117,35 @@ service cloud.firestore {
       allow delete: if isAuthenticated()
         && resource.data.createdBy == request.auth.uid;
     }
+    
+    // ============================================
+    // Bundle Interactions Collection (Bundle-Scoped Ratings)
+    // ============================================
+    match /bundle_interactions/{interactionId} {
+      // Helper to validate bundle rating status
+      function isValidBundleStatus(status) {
+        return status in ['yes', 'not_now', 'never'];
+      }
+      
+      // All authenticated users can read bundle interactions (needed for match detection)
+      allow read: if isAuthenticated();
+      
+      // Users can create bundle interactions for themselves
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && isValidString(request.resource.data.bundleId)
+        && isValidString(request.resource.data.tmdbId)
+        && isValidContentType(request.resource.data.contentType)
+        && isValidBundleStatus(request.resource.data.status);
+      
+      // Users can update their own bundle interactions
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own bundle interactions
+      allow delete: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+    }
   }
 }
