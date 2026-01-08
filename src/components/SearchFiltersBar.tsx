@@ -42,6 +42,20 @@ export function SearchFiltersBar({
                     onClick={() => onFilterChange('contentType', 'tv')}
                 />
 
+                {/* Available to Stream Toggle */}
+                <button
+                    onClick={() => onFilterChange('availableToStream', !filters.availableToStream)}
+                    className={cn(
+                        'px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap',
+                        'transition-all duration-200',
+                        filters.availableToStream
+                            ? 'bg-accent-success text-white'
+                            : 'bg-bg-card text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                    )}
+                >
+                    🎬 Streaming
+                </button>
+
                 {/* More Filters Button */}
                 <button
                     onClick={onOpenFullFilters}

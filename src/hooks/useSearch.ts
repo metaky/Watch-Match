@@ -204,7 +204,9 @@ export function useSearch(
                 .map(genreName => GENRE_NAME_TO_ID[genreName.toLowerCase()])
                 .filter((id): id is number => id !== undefined);
             if (genreIds.length > 0) {
-                apiFilters.with_genres = genreIds.join(',');
+                // Use pipe separator for OR logic (show content matching ANY selected genre)
+                // Comma separator would be AND logic (only show content matching ALL genres)
+                apiFilters.with_genres = genreIds.join('|');
             }
         }
 
@@ -265,6 +267,13 @@ export function useSearch(
                 apiFilters['primary_release_date.lte'] = `${searchFilters.customYearRange.end}-12-31`;
                 apiFilters['first_air_date.lte'] = `${searchFilters.customYearRange.end}-12-31`;
             }
+        }
+
+        // Available to Stream filter - use popular US streaming providers
+        // Netflix=8, Amazon Prime=9, Disney+=337, Hulu=15, Max=1899, Apple TV+=350, Paramount+=531, Peacock=386
+        if (searchFilters.availableToStream) {
+            apiFilters.with_watch_providers = '8|9|337|15|1899|350|531|386';
+            apiFilters.watch_region = 'US';
         }
 
         return apiFilters;

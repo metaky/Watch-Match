@@ -246,6 +246,9 @@ export interface SearchFilters {
 
     /** Custom year range (optional, takes precedence over decades if set) */
     customYearRange: YearRange | null;
+
+    /** Filter to only show content available on streaming services */
+    availableToStream: boolean;
 }
 
 /**
@@ -259,6 +262,7 @@ export const DEFAULT_SEARCH_FILTERS: SearchFilters = {
     maxRuntime: 240,
     releaseDecades: [],
     customYearRange: null,
+    availableToStream: false,
 };
 
 /**
@@ -271,7 +275,8 @@ export function hasActiveSearchFilters(filters: SearchFilters): boolean {
         filters.minImdbRating > 0 ||
         filters.maxRuntime < 240 ||
         filters.releaseDecades.length > 0 ||
-        filters.customYearRange !== null
+        filters.customYearRange !== null ||
+        filters.availableToStream
     );
 }
 

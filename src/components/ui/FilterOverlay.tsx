@@ -181,6 +181,39 @@ export function FilterOverlay({
                         />
                     </section>
 
+                    {/* Available to Stream - Only for search mode */}
+                    {mode === 'search' && (
+                        <section>
+                            <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">
+                                Availability
+                            </h2>
+                            <button
+                                onClick={() => updateFilter('availableToStream', !filters.availableToStream)}
+                                className={cn(
+                                    'w-full flex items-center justify-between px-4 py-3 rounded-xl',
+                                    'transition-all duration-200',
+                                    filters.availableToStream
+                                        ? 'bg-accent-success text-white'
+                                        : 'bg-bg-card text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                                )}
+                            >
+                                <span className="font-medium">🎬 Available to Stream</span>
+                                <span className={cn(
+                                    'w-12 h-7 rounded-full relative transition-colors duration-200',
+                                    filters.availableToStream ? 'bg-white/30' : 'bg-bg-elevated'
+                                )}>
+                                    <span className={cn(
+                                        'absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200',
+                                        filters.availableToStream ? 'translate-x-6' : 'translate-x-1'
+                                    )} />
+                                </span>
+                            </button>
+                            <p className="text-xs text-text-tertiary mt-2 pl-1">
+                                Only show content currently streaming on popular services
+                            </p>
+                        </section>
+                    )}
+
                     {/* Streaming Services - Only relevant for home page watchlist discovery */}
                     {mode === 'home' && (
                         <section>
