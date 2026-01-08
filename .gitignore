@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .firebase/
+
+# Firebase Admin SDK credentials
+service-account.json
