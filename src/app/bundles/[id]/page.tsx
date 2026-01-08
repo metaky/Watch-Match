@@ -106,7 +106,7 @@ export default function BundleDetailPage() {
                                 details = await getTVDetails(id);
                             }
                         } catch (e) {
-                            console.warn(`Failed to load ${ref.mediaType} ${id}, trying fallback...`);
+                            // Try the other type if the first failed
                             try {
                                 if (ref.mediaType === 'movie') {
                                     details = await getTVDetails(id);
@@ -114,7 +114,7 @@ export default function BundleDetailPage() {
                                     details = await getMovieDetails(id);
                                 }
                             } catch (fallbackError) {
-                                console.error(`Failed to load content ${id} with both endpoints:`, fallbackError);
+                                console.warn(`Failed to load content ${id} (tried both movie/tv)`);
                                 return null;
                             }
                         }
@@ -141,14 +141,17 @@ export default function BundleDetailPage() {
 
                 // Strategy 1: Try using contentItems (newer bundles)
                 let validItems: (BundleContentItem & { alreadyRated: boolean })[] = [];
+                let triedContentItems = false;
 
                 if (bundle.contentItems && bundle.contentItems.length > 0) {
+                    triedContentItems = true;
                     validItems = await fetchItemsForRefs(bundle.contentItems);
                 }
 
                 // Strategy 2: If no items found but we have IDs, fallback to contentIds (legacy/migration)
-                if (validItems.length === 0 && bundle.contentIds && bundle.contentIds.length > 0) {
-                    console.log("Fallback: contentItems yielded 0 results, trying contentIds...");
+                // Only do this if we didn't already try contentItems (to avoid double-fetching bad IDs)
+                if (!triedContentItems && validItems.length === 0 && bundle.contentIds && bundle.contentIds.length > 0) {
+                    console.log("Using legacy contentIds fallback...");
                     // Assume movie by default for legacy, but the fetch logic tries both anyway
                     const legacyRefs = bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
                     validItems = await fetchItemsForRefs(legacyRefs);
