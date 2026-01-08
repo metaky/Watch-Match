@@ -35,8 +35,8 @@ service cloud.firestore {
     // Users Collection
     // ============================================
     match /users/{userId} {
-      // Users can only read their own profile
-      allow read: if isOwner(userId);
+      // Users can only read their own profile - UPDATED: Allow all auth users to read (needed for profile lookup)
+      allow read: if isAuthenticated();
       
       // Users can only create/update their own profile
       allow create: if isOwner(userId) 
