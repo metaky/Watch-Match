@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { searchMulti, getTrending, discoverMedia } from '@/services/tmdb';
 import { getImageUrl } from '@/services/api';
 import type { ContentCardData, SearchFilters } from '@/types/content';
-import { extractYear } from '@/types/content';
+import { extractYear, hasActiveSearchFilters } from '@/types/content';
 
 // Genre ID to name mapping from TMDB
 const GENRE_MAP: Record<number, string> = {
@@ -39,6 +39,11 @@ const GENRE_MAP: Record<number, string> = {
     10768: 'War & Politics',
 };
 
+// Reverse lookup: genre name to ID (for API filtering)
+const GENRE_NAME_TO_ID: Record<string, number> = Object.fromEntries(
+    Object.entries(GENRE_MAP).map(([id, name]) => [name.toLowerCase(), parseInt(id)])
+);
+
 // Map MediaItem to ContentCardData for suggestions
 const toSuggestion = (item: any): ContentCardData => ({
     id: item.id,
@@ -68,6 +73,7 @@ interface UseSearchResult {
     hasMore: boolean;
     loadMore: () => void;
     isBrowseMode: boolean;
+    hasFiltersActive: boolean;
     suggestions: ContentCardData[];
 }
 
@@ -90,6 +96,9 @@ export function useSearch(
 
     // Check if we're in browse mode (no search query)
     const isBrowseMode = query.trim() === '';
+
+    // Check if any filters are active (for UI purposes)
+    const hasFiltersActive = hasActiveSearchFilters(filters);
 
     // Filter results based on search filters
     const applyFilters = useCallback((items: ContentCardData[]): ContentCardData[] => {
@@ -185,45 +194,143 @@ export function useSearch(
         });
     }, [initialItemsCount]);
 
+    // Build TMDB API filter parameters from SearchFilters
+    const buildApiFilters = useCallback((searchFilters: SearchFilters): Record<string, any> => {
+        const apiFilters: Record<string, any> = {};
+
+        // Map genre names to TMDB genre IDs
+        if (searchFilters.genres.length > 0) {
+            const genreIds = searchFilters.genres
+                .map(genreName => GENRE_NAME_TO_ID[genreName.toLowerCase()])
+                .filter((id): id is number => id !== undefined);
+            if (genreIds.length > 0) {
+                apiFilters.with_genres = genreIds.join(',');
+            }
+        }
+
+        // Map release decades to date ranges
+        if (searchFilters.releaseDecades.length > 0) {
+            // Find the earliest and latest years from selected decades
+            let minYear = 3000;
+            let maxYear = 0;
+
+            searchFilters.releaseDecades.forEach(decade => {
+                switch (decade) {
+                    case '2020s':
+                        minYear = Math.min(minYear, 2020);
+                        maxYear = Math.max(maxYear, 2029);
+                        break;
+                    case '2010s':
+                        minYear = Math.min(minYear, 2010);
+                        maxYear = Math.max(maxYear, 2019);
+                        break;
+                    case '2000s':
+                        minYear = Math.min(minYear, 2000);
+                        maxYear = Math.max(maxYear, 2009);
+                        break;
+                    case '1990s':
+                        minYear = Math.min(minYear, 1990);
+                        maxYear = Math.max(maxYear, 1999);
+                        break;
+                    case 'older':
+                        minYear = Math.min(minYear, 1900);
+                        maxYear = Math.max(maxYear, 1989);
+                        break;
+                }
+            });
+
+            if (minYear < 3000) {
+                apiFilters['primary_release_date.gte'] = `${minYear}-01-01`;
+                apiFilters['first_air_date.gte'] = `${minYear}-01-01`;
+            }
+            if (maxYear > 0) {
+                // Don't show future content
+                const today = new Date();
+                const effectiveMaxYear = Math.min(maxYear, today.getFullYear());
+                const effectiveMaxDate = maxYear >= today.getFullYear()
+                    ? today.toISOString().split('T')[0]
+                    : `${maxYear}-12-31`;
+                apiFilters['primary_release_date.lte'] = effectiveMaxDate;
+                apiFilters['first_air_date.lte'] = effectiveMaxDate;
+            }
+        }
+
+        // Custom year range takes precedence
+        if (searchFilters.customYearRange) {
+            if (searchFilters.customYearRange.start) {
+                apiFilters['primary_release_date.gte'] = `${searchFilters.customYearRange.start}-01-01`;
+                apiFilters['first_air_date.gte'] = `${searchFilters.customYearRange.start}-01-01`;
+            }
+            if (searchFilters.customYearRange.end) {
+                apiFilters['primary_release_date.lte'] = `${searchFilters.customYearRange.end}-12-31`;
+                apiFilters['first_air_date.lte'] = `${searchFilters.customYearRange.end}-12-31`;
+            }
+        }
+
+        return apiFilters;
+    }, []);
+
     // Fetch content for browse mode (trending or discovered/sorted)
     const fetchBrowsingContent = useCallback(async () => {
         setIsLoading(true);
         setError(null);
 
         try {
+            // Check if any filters (besides sort) are active
+            const hasFiltersActive = hasActiveSearchFilters(filters);
+
             // Determine media type
             const mediaType = filters.contentType === 'movies' ? 'movie' :
                 filters.contentType === 'tv' ? 'tv' : 'all';
 
             let fetchedResults;
 
-            // If "all" and sorting is not 'popular', we default to 'popular' behavior or 'movie' discovery?
-            // User requirement: "Popular Now" uses getTrending.
-            // Other sorts ("Latest Added", "Highest Score") use discoverMedia.
-            // discoverMedia only supports 'movie' or 'tv', not 'all'.
-            // Strategy: 
-            // 1. If 'popular' (default), use getTrending (supports 'all').
-            // 2. If 'latest' or 'highest_score':
-            //    - If mediaType is 'movie' or 'tv', use discoverMedia.
-            //    - If mediaType is 'all', we default to getTrending because discover doesn't support 'all' easily without merging.
-
+            // If no filters are active and sort is 'popular', use trending (includes both movies and TV)
+            // Otherwise, use discover with filters for server-side filtering
             const sortBy = filters.sortBy || 'popular';
+            const useDiscover = hasFiltersActive || sortBy !== 'popular';
 
-            if (sortBy === 'popular' || mediaType === 'all') {
+            if (!useDiscover && mediaType === 'all') {
+                // Default: no filters, popular sort - use trending
                 fetchedResults = await getTrending(mediaType);
-            } else {
-                // Specific sort for specific media type
+            } else if (mediaType === 'all' && useDiscover) {
+                // Filters active but mediaType is 'all' - fetch both and merge
                 const tmdbSort = sortBy === 'highest_score' ? 'vote_average.desc' :
                     sortBy === 'latest' ? 'primary_release_date.desc' : 'popularity.desc';
 
-                fetchedResults = await discoverMedia(mediaType as 'movie' | 'tv', tmdbSort);
+                const apiFilters = buildApiFilters(filters);
+
+                const [movieResults, tvResults] = await Promise.all([
+                    discoverMedia('movie', tmdbSort, 1, apiFilters),
+                    discoverMedia('tv', tmdbSort, 1, apiFilters),
+                ]);
+
+                // Merge and sort by the selected criteria
+                const combined = [...movieResults.results, ...tvResults.results];
+                if (sortBy === 'highest_score') {
+                    combined.sort((a, b) => b.voteAverage - a.voteAverage);
+                } else if (sortBy === 'latest') {
+                    combined.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
+                } else {
+                    combined.sort((a, b) => b.popularity - a.popularity);
+                }
+
+                fetchedResults = { results: combined.slice(0, 40) };
+            } else {
+                // Specific media type or filters active
+                const tmdbSort = sortBy === 'highest_score' ? 'vote_average.desc' :
+                    sortBy === 'latest' ? 'primary_release_date.desc' : 'popularity.desc';
+
+                const apiFilters = buildApiFilters(filters);
+                fetchedResults = await discoverMedia(mediaType as 'movie' | 'tv', tmdbSort, 1, apiFilters);
             }
 
             const transformed = transformResults(fetchedResults.results);
+            // Still apply client-side filters for anything the API couldn't handle (like minImdbRating, maxRuntime)
             const filtered = applyFilters(transformed);
             setResults(filtered);
-            setSuggestions(filtered.slice(0, 5)); // For checking
-            setHasMore(false); // Trending/Discover usually single page fetch here for now (or improve pagination later)
+            setSuggestions(filtered.slice(0, 5));
+            setHasMore(false);
         } catch (err) {
             setError(err instanceof Error ? err : new Error('Failed to fetch content'));
             setResults([]);
@@ -231,7 +338,7 @@ export function useSearch(
         } finally {
             setIsLoading(false);
         }
-    }, [filters.contentType, filters.sortBy, transformResults, applyFilters]);
+    }, [filters, transformResults, applyFilters]);
 
     // Perform search
     const performSearch = useCallback(async (searchQuery: string, pageNum = 1) => {
@@ -336,6 +443,7 @@ export function useSearch(
         hasMore,
         loadMore,
         isBrowseMode,
+        hasFiltersActive,
         suggestions,
     };
 }

@@ -40,6 +40,7 @@ export default function SearchPage() {
         isLoading,
         error,
         isBrowseMode,
+        hasFiltersActive,
         hasMore,
         loadMore,
         suggestions,
@@ -101,7 +102,10 @@ export default function SearchPage() {
             {/* Results Area */}
             <div className="space-y-4">
                 <h2 className="text-sm font-bold text-text-tertiary uppercase tracking-wider pl-1">
-                    {isBrowseMode ? 'Trending Now' : `Results for "${searchQuery}"`}
+                    {isBrowseMode
+                        ? (hasFiltersActive ? 'Filtered Results' : 'Trending Now')
+                        : `Results for "${searchQuery}"`
+                    }
                 </h2>
 
                 {isLoading && results.length === 0 ? (
