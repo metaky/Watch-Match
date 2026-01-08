@@ -14,7 +14,7 @@ import {
     ReleaseYearFilter,
     SortSelect,
 } from './filters';
-import type { AdvancedFilters, StreamingServiceId } from '@/types/content';
+import type { AdvancedFilters, StreamingServiceId, SearchFilters } from '@/types/content';
 import { DEFAULT_FILTERS, hasActiveFilters } from '@/types/content';
 
 interface FilterOverlayProps {
@@ -51,7 +51,7 @@ export function FilterOverlay({
         resetSearchFilters,
     } = useAppStore();
 
-    const filters = mode === 'home' ? advancedFilters : (searchFilters as any as AdvancedFilters);
+    const filters: AdvancedFilters | SearchFilters = mode === 'home' ? advancedFilters : searchFilters;
     const updateFilter = mode === 'home'
         ? (updateAdvancedFilter as (key: string, value: any) => void)
         : (updateSearchFilter as (key: string, value: any) => void);
@@ -182,7 +182,7 @@ export function FilterOverlay({
                     </section>
 
                     {/* Available to Stream - Only for search mode */}
-                    {mode === 'search' && (
+                    {mode === 'search' && 'availableToStream' in filters && (
                         <section>
                             <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">
                                 Availability
@@ -215,7 +215,7 @@ export function FilterOverlay({
                     )}
 
                     {/* Streaming Services - Only relevant for home page watchlist discovery */}
-                    {mode === 'home' && (
+                    {mode === 'home' && 'streamingServices' in filters && (
                         <section>
                             <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">
                                 Streaming Services
@@ -242,7 +242,7 @@ export function FilterOverlay({
                     </section>
 
                     {/* Partner Rating - Only relevant for watchlist items */}
-                    {mode === 'home' && (
+                    {mode === 'home' && 'partnerRating' in filters && (
                         <section>
                             <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 pl-1">
                                 Partner Rating
