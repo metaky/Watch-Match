@@ -43,8 +43,11 @@ const REQUEST_DELAY_MS = 300; // ~3.3 requests per second to be safe
 // ============================================
 
 interface CSVRow {
-    'Added Time': string;
-    'Title': string;
+    'Added Time'?: string;
+    'Title'?: string;
+    // Alternative lowercase column names (some CSVs use different casing)
+    'added time'?: string;
+    'title'?: string;
 }
 
 interface TMDBSearchResult {
