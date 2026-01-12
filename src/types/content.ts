@@ -192,7 +192,7 @@ export const DEFAULT_FILTERS: AdvancedFilters = {
     contentType: null,
     streamingServices: [],
     genres: [],
-    sortBy: 'popular',
+    sortBy: 'latest',
     partnerRating: 'any',
     minImdbRating: 0,
     maxRuntime: 240,
