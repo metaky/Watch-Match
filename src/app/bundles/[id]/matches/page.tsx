@@ -73,10 +73,16 @@ export default function MatchesPage() {
                     }
                 });
 
-                // Use contentItems (with mediaType) if available, otherwise fall back to legacy contentIds
-                const contentRefs = bundle.contentItems && bundle.contentItems.length > 0
-                    ? bundle.contentItems
-                    : bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
+                // Reconcile contentItems and contentIds to ensure all items are included
+                // Build a map from contentItems for media type info
+                const contentItemsMap = new Map(
+                    (bundle.contentItems || []).map(item => [item.tmdbId, item])
+                );
+
+                // Create refs for ALL items in contentIds, using contentItems data when available
+                const contentRefs = bundle.contentIds.map(id =>
+                    contentItemsMap.get(id) || { tmdbId: id, mediaType: 'movie' as const }
+                );
 
                 const items = await Promise.all(contentRefs.map(async (ref) => {
                     const id = parseInt(ref.tmdbId);

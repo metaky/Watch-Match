@@ -149,23 +149,18 @@ export default function BundleDetailPage() {
                     return results.filter(Boolean) as (BundleContentItem & { alreadyRated: boolean })[];
                 };
 
-                // Strategy 1: Try using contentItems (newer bundles)
-                let validItems: (BundleContentItem & { alreadyRated: boolean })[] = [];
-                let triedContentItems = false;
+                // Reconcile contentItems and contentIds to ensure all items are included
+                // Build a map from contentItems for media type info
+                const contentItemsMap = new Map(
+                    (bundle.contentItems || []).map(item => [item.tmdbId, item])
+                );
 
-                if (bundle.contentItems && bundle.contentItems.length > 0) {
-                    triedContentItems = true;
-                    validItems = await fetchItemsForRefs(bundle.contentItems);
-                }
+                // Create refs for ALL items in contentIds, using contentItems data when available
+                const allContentRefs = bundle.contentIds.map(id =>
+                    contentItemsMap.get(id) || { tmdbId: id, mediaType: 'movie' as const }
+                );
 
-                // Strategy 2: If no items found but we have IDs, fallback to contentIds (legacy/migration)
-                // Only do this if we didn't already try contentItems (to avoid double-fetching bad IDs)
-                if (!triedContentItems && validItems.length === 0 && bundle.contentIds && bundle.contentIds.length > 0) {
-                    console.log("Using legacy contentIds fallback...");
-                    // Assume movie by default for legacy, but the fetch logic tries both anyway
-                    const legacyRefs = bundle.contentIds.map(id => ({ tmdbId: id, mediaType: 'movie' as const }));
-                    validItems = await fetchItemsForRefs(legacyRefs);
-                }
+                const validItems = await fetchItemsForRefs(allContentRefs);
 
                 // Store all items for potential re-rating
                 setAllContentItems(validItems);
