@@ -3,7 +3,7 @@
 
 import React, { useState, useRef } from 'react';
 import Image from 'next/image';
-import { Heart, Share2 } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PlotOverlay } from './PlotOverlay';
 import type { BundleContentItem, BundleRating } from '@/lib/mockBundleContent';
@@ -262,9 +262,6 @@ export function SwipeableContentCard({
             <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-3">
                 {/* Suggested By */}
                 <div className="flex items-center gap-2 mb-1">
-                    <div className="h-6 w-6 rounded-full bg-accent-primary/20 flex items-center justify-center border border-accent-primary/30">
-                        <Share2 className="w-3 h-3 text-accent-primary" />
-                    </div>
                     <span className="text-white/90 text-xs font-semibold backdrop-blur-md bg-black/30 px-2 py-1 rounded-full border border-white/10">
                         {suggestedByText}
                     </span>
