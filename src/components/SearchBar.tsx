@@ -11,6 +11,9 @@ interface SearchBarProps {
     placeholder?: string;
     autoFocus?: boolean;
     className?: string;
+    onBlur?: () => void;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    onFocus?: () => void;
 }
 
 export function SearchBar({
@@ -19,6 +22,9 @@ export function SearchBar({
     placeholder = 'Search movies & TV shows...',
     autoFocus = false,
     className,
+    onBlur,
+    onKeyDown,
+    onFocus,
 }: SearchBarProps) {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +52,9 @@ export function SearchBar({
                 type="text"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
+                onBlur={onBlur}
+                onKeyDown={onKeyDown}
+                onFocus={onFocus}
                 placeholder={placeholder}
                 className={cn(
                     'w-full h-12 pl-12 pr-12',

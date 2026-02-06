@@ -1,7 +1,7 @@
 // Search Page - Discover and discover content
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Loader2, Search as SearchIcon } from 'lucide-react';
 import { SearchBar } from '@/components/SearchBar';
 import { SearchFiltersBar } from '@/components/SearchFiltersBar';
@@ -15,6 +15,9 @@ import { useAppStore } from '@/store/useAppStore';
 import type { ContentCardData } from '@/types/content';
 
 export default function SearchPage() {
+    // Track whether suggestions dropdown should be shown
+    const [showSuggestions, setShowSuggestions] = useState(true);
+
     const {
         searchQuery,
         setSearchQuery,
@@ -65,10 +68,38 @@ export default function SearchPage() {
 
     // Handle suggestion selection
     const handleSuggestionSelect = (item: ContentCardData) => {
-        // Option 1: Open modal immediately
+        // Open modal immediately
         openDetailModal(item);
-        // Option 2: Set query to item title?
-        // setSearchQuery(item.title);
+        // Hide suggestions after selection
+        setShowSuggestions(false);
+    };
+
+    // Handle Enter key press to close suggestions
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            setShowSuggestions(false);
+            // Blur the input to dismiss keyboard on mobile
+            (e.target as HTMLInputElement).blur();
+        }
+    };
+
+    // Handle blur (click outside) to close suggestions
+    const handleSearchBlur = () => {
+        // Small delay to allow click on suggestion to register first
+        setTimeout(() => {
+            setShowSuggestions(false);
+        }, 150);
+    };
+
+    // Handle focus to re-show suggestions
+    const handleSearchFocus = () => {
+        setShowSuggestions(true);
+    };
+
+    // Handle search query change - re-show suggestions when typing
+    const handleSearchChange = (value: string) => {
+        setSearchQuery(value);
+        setShowSuggestions(true);
     };
 
     return (
@@ -80,14 +111,17 @@ export default function SearchPage() {
                 <div className="relative z-50">
                     <SearchBar
                         value={searchQuery}
-                        onChange={setSearchQuery}
+                        onChange={handleSearchChange}
                         placeholder="Search movies, TV shows, actors..."
+                        onKeyDown={handleSearchKeyDown}
+                        onBlur={handleSearchBlur}
+                        onFocus={handleSearchFocus}
                     />
 
                     <SearchSuggestions
                         suggestions={suggestions}
                         isLoading={isLoading}
-                        isVisible={searchQuery.trim().length > 0 && suggestions.length > 0}
+                        isVisible={showSuggestions && searchQuery.trim().length > 0 && suggestions.length > 0}
                         onSelect={handleSuggestionSelect}
                     />
                 </div>
